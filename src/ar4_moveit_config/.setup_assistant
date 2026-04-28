@@ -1,0 +1,10 @@
+moveit_setup_assistant_config:
+  urdf:
+    package: ar4_description
+    relative_path: urdf/ar4.urdf.xacro
+  srdf:
+    relative_path: config/ar4.srdf
+  package_settings:
+    author_name: Alan
+    author_email: alan@test.com
+    generated_timestamp: 1777381580
