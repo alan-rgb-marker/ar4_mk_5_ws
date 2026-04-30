@@ -51,7 +51,8 @@ endforeach()
 add_library(
   ar4_hardware_interface SHARED
   src/ar4_hardware_interface.cpp
-  src/ar4_servo_gripper_hw_interface.cpp
+  # src/ar4_servo_gripper_hw_interface.cpp
+  src/ar4_switch_gripper_interface.cpp
   src/arduino_nano_driver.cpp
   src/teensy_driver.cpp)
 

@@ -25,7 +25,7 @@ void TeensyDriver::init(std::string port, int baudrate, int num_joints) {
   }
 
   initialised_ = false;
-  std::string msg = "STA" + version_ + "\n";
+  std::string msg = "HO\n";
 
   while (!initialised_) {
     RCLCPP_INFO(logger_, "Waiting for response from Teensy on port %s", port.c_str());
@@ -56,28 +56,64 @@ void TeensyDriver::setStepperSpeed(std::vector<double>& max_speed, std::vector<d
 
 // Update between hardware interface and hardware driver
 void TeensyDriver::update(std::vector<double>& pos_commands, std::vector<double>& joint_positions) {
-  // construct update message
-  std::string outMsg = "MT";
-  for (int i = 0; i < num_joints_; ++i) {
-    outMsg += 'A' + i;
-    outMsg += std::to_string(pos_commands[i]);
+  // For now, just get current positions since Teensy doesn't support direct joint commands
+  // TODO: Implement proper joint control or modify Teensy firmware
+  // getJointPositions(joint_positions);
+  
+  // // Log the commands (for debugging)
+  // std::string logMsg = "Joint commands received: ";
+  // for (size_t i = 0; i < pos_commands.size(); ++i) {
+  //   logMsg += std::to_string(pos_commands[i]) + " ";
+  // }
+  // RCLCPP_INFO(logger_, "%s", logMsg.c_str());
+  static std::string outMsg_tmp = "";
+
+
+  //四捨五入
+  for (size_t i = 0; i < pos_commands.size(); ++i) {
+    pos_commands[i] = (int)(pos_commands[i] * 100) / 100.0;
+    if ((i == 1 || i == 2 || i == 4) && pos_commands[i] != 0) {
+      pos_commands[i] *= -1;
+    }
+  } 
+
+  std::string outMsg = "RJ";
+  outMsg += "A" + std::to_string(pos_commands[0]);  // J1
+  outMsg += "B" + std::to_string(pos_commands[1]);  // J2
+  outMsg += "C" + std::to_string(pos_commands[2]);  // J3
+  outMsg += "D" + std::to_string(pos_commands[3]);  // J4
+  outMsg += "E" + std::to_string(pos_commands[4]);  // J5
+  outMsg += "F" + std::to_string(pos_commands[5]);  // J6
+  outMsg += "J70J80J90Sp10Ac10Dc10Rm20W0\n";
+
+  
+  if(outMsg == outMsg_tmp) {
+    RCLCPP_INFO_THROTTLE(logger_, clock_, 500, "same pos: %s", outMsg.c_str());
+    return;
   }
-  outMsg += "\n";
+  else {
+    outMsg_tmp = outMsg;
+    RCLCPP_INFO(logger_, "Send msg: %s", outMsg.c_str());
+    sendCommand(outMsg_tmp);                 // 發送一次
+  }
 
-  // run the communication with board
-  exchange(outMsg);
-
-  joint_positions = joint_positions_deg_;
+  // RCLCPP_INFO(logger_, "%s", outMsg.c_str());
+  // getJointPositions(joint_positions);  // 讀取當前位置
 }
 
 void TeensyDriver::calibrateJoints() {
-  std::string outMsg = "JC\n";
+  // For now, just log that calibration was requested
+  // Teensy calibration is typically done through limit switches
+  RCLCPP_INFO(logger_, "Joint calibration requested - ensure robot is in calibration position");
+  
+  // Could send "TL" command to test limit switches, but for now just acknowledge
+  std::string outMsg = "TL\n";
   sendCommand(outMsg);
 }
 
 void TeensyDriver::getJointPositions(std::vector<double>& joint_positions) {
   // get current joint positions
-  std::string msg = "JP\n";
+  std::string msg = "RP\n";
   exchange(msg);
   joint_positions = joint_positions_deg_;
 }
@@ -103,27 +139,20 @@ void TeensyDriver::exchange(std::string outMsg) {
   while (!done) {
     receive(inMsg);
     // parse msg
-    std::string header = inMsg.substr(0, 2);
-    if (header == "ST") {
-      // init acknowledgement
-      checkInit(inMsg);
-      done = true;
-    } else if (header == "JC") {
-      // encoder calibration values
-      updateEncoderCalibrations(inMsg);
-      done = true;
-    } else if (header == "JP") {
-      // encoder steps
-      updateJointPositions(inMsg);
-      done = true;
-    } else if (header == "DB") {
-      // debug message
-      RCLCPP_DEBUG(logger_, "Debug message: %s", inMsg.c_str());
-      done = true;
-    } else {
-      // unknown header
-      RCLCPP_WARN(logger_, "Unknown header %s", header.c_str());
-      done = true;
+    if (inMsg.length() > 0) {
+      if (inMsg[0] == '{') {
+        // JSON response from HO command
+        checkInit(inMsg);
+        done = true;
+      } else if (inMsg[0] == 'A') {
+        // Position response from RP command
+        updateJointPositions(inMsg);
+        done = true;
+      } else {
+        // unknown header
+        RCLCPP_WARN(logger_, "Unknown response: %s", inMsg.c_str());
+        done = true;
+      }
     }
   }
 }
@@ -162,14 +191,13 @@ void TeensyDriver::receive(std::string& inMsg) {
 }
 
 void TeensyDriver::checkInit(std::string msg) {
-  std::size_t ack_idx = msg.find("A", 2) + 1;
-  std::size_t version_idx = msg.find("B", 2) + 1;
-  int ack = std::stoi(msg.substr(ack_idx, version_idx));
-  if (ack) {
+  // Parse JSON response from HO command
+  // For now, just check if we got a valid JSON response
+  if (msg.find("DriverModel") != std::string::npos) {
     initialised_ = true;
+    RCLCPP_INFO(logger_, "Received valid Teensy identification: %s", msg.c_str());
   } else {
-    std::string version = msg.substr(version_idx);
-    RCLCPP_ERROR(logger_, "Firmware version mismatch %s", version.c_str());
+    RCLCPP_ERROR(logger_, "Invalid Teensy identification response: %s", msg.c_str());
   }
 }
 
@@ -192,18 +220,26 @@ void TeensyDriver::updateEncoderCalibrations(std::string msg) {
 }
 
 void TeensyDriver::updateJointPositions(std::string msg) {
-  size_t idx1 = msg.find("A", 2) + 1;
-  size_t idx2 = msg.find("B", 2) + 1;
-  size_t idx3 = msg.find("C", 2) + 1;
-  size_t idx4 = msg.find("D", 2) + 1;
-  size_t idx5 = msg.find("E", 2) + 1;
-  size_t idx6 = msg.find("F", 2) + 1;
-  joint_positions_deg_[0] = std::stod(msg.substr(idx1, idx2 - idx1));
-  joint_positions_deg_[1] = std::stod(msg.substr(idx2, idx3 - idx2));
-  joint_positions_deg_[2] = std::stod(msg.substr(idx3, idx4 - idx3));
-  joint_positions_deg_[3] = std::stod(msg.substr(idx4, idx5 - idx4));
-  joint_positions_deg_[4] = std::stod(msg.substr(idx5, idx6 - idx5));
-  joint_positions_deg_[5] = std::stod(msg.substr(idx6));
+  // Parse format: A{joint1}B{joint2}C{joint3}D{joint4}E{joint5}F{joint6}...
+  size_t pos = 0;
+  for (int i = 0; i < num_joints_ && pos < msg.length(); ++i) {
+    char marker = 'A' + i;
+    size_t start = msg.find(marker, pos);
+    if (start != std::string::npos) {
+      start += 1; // Skip the marker
+      size_t end = (i < num_joints_ - 1) ? msg.find(char('A' + i + 1), start) : msg.length();
+      if (end != std::string::npos) {
+        std::string value = msg.substr(start, end - start);
+        try {
+          joint_positions_deg_[i] = std::stod(value);
+        } catch (const std::exception& e) {
+          RCLCPP_WARN(logger_, "Failed to parse joint %d position: %s", i, value.c_str());
+          joint_positions_deg_[i] = 0.0;
+        }
+        pos = end;
+      }
+    }
+  }
 }
 
 }  // namespace ar4_hardware_interface

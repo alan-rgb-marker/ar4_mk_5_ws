@@ -7,9 +7,10 @@
   <xacro:arg name="ar_model" default="ar4"/>
   <xacro:include filename="$(find ar4_description)/urdf/ar4.urdf.xacro"/>
   <xacro:include filename="$(find ar4_hardware_interface)/urdf/ar4.ros2_control_hardware.xacro"/>
+  <xacro:include filename="$(find ar4_hardware_interface)/urdf/ar4_gripper.ros2_control_hardware.xacro"/>
 
   <link name="world" />
-  <joint name="base_joint" type="fixed">
+  <joint name="joint_world" type="fixed">
     <origin xyz="0 0 0" rpy="0 0 0" />
       <parent link="world"/>
       <child link="base_link" />
@@ -19,6 +20,14 @@
     name="ar4"
     plugin_name="ar4_hardware_interface/ARHardwareInterface"
     serial_port="$(arg serial_port)"
+    calibrate="$(arg calibrate)"
+    joint_offset_parameters_file="$(find ar4_hardware_interface)/config/joint_offsets/ar4.yaml"
+  />
+
+  <xacro:ar_gripper_ros2_control
+    name="ar4_gripper"
+    plugin_name="ar4_hardware_interface/ARSwitchGripperHWInterface"
+    serial_port="$(arg arduino_serial_port)"
     calibrate="$(arg calibrate)"
     joint_offset_parameters_file="$(find ar4_hardware_interface)/config/joint_offsets/ar4.yaml"
   />

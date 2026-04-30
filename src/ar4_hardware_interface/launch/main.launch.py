@@ -50,10 +50,7 @@ def generate_launch_description():
     controller_manager_node = Node(
         package="controller_manager",
         executable="ros2_control_node",
-        parameters=[
-            robot_description,
-            ParameterFile(joint_controllers_cfg, allow_substs=True),
-        ],
+        parameters=[robot_description, ParameterFile(joint_controllers_cfg, allow_substs=True)],
         output="screen",
     )
 
@@ -68,19 +65,18 @@ def generate_launch_description():
             "60",
         ],
     )
-
-    # gripper_controller_spawner = Node(
-    #     package="controller_manager",
-    #     executable="spawner",
-    #     arguments=[
-    #         "gripper_controller",
-    #         "-c",
-    #         "/controller_manager",
-    #         "--controller-manager-timeout",
-    #         "60",
-    #     ],
-    #     condition=IfCondition(include_gripper),
-    # )
+    
+    gripper_controller_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=[
+            "gripper_controller",
+            "-c",
+            "/controller_manager",
+            "--controller-manager-timeout",
+            "60",
+        ],
+    )
 
     robot_state_publisher_node = Node(
         package="robot_state_publisher",
@@ -105,7 +101,8 @@ def generate_launch_description():
     ld.add_action(
         DeclareLaunchArgument(
             "serial_port",
-            default_value="/dev/ttyACM0",
+            # default_value="/dev/ttyACM0",
+            default_value="/dev/serial/by-id/usb-Teensyduino_USB_Serial_12650770-if00",
             description="Serial port to connect to the robot",
         )
     )
@@ -117,18 +114,19 @@ def generate_launch_description():
             choices=["True", "False"],
         )
     )
-    # ld.add_action(
-    #     DeclareLaunchArgument(
-    #         "include_gripper",
-    #         default_value="True",
-    #         description="Run the servo gripper",
-    #         choices=["True", "False"],
-    #     )
-    # )
+    ld.add_action(
+        DeclareLaunchArgument(
+            "include_gripper",
+            default_value="True",
+            description="Run the switch gripper",
+            choices=["True", "False"],
+        )
+    )
     ld.add_action(
         DeclareLaunchArgument(
             "arduino_serial_port",
-            default_value="/dev/ttyUSB0",
+            # default_value="/dev/ttyACM1",
+            default_value="/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_55338343539351101150-if00",
             description="Serial port of the Arduino nano for the servo gripper",
         )
     )
@@ -139,7 +137,7 @@ def generate_launch_description():
     )
     ld.add_action(controller_manager_node)
     ld.add_action(spawn_joint_controller)
-    # ld.add_action(gripper_controller_spawner)
+    ld.add_action(gripper_controller_spawner)
     ld.add_action(robot_state_publisher_node)
     ld.add_action(joint_state_broadcaster)
     return ld

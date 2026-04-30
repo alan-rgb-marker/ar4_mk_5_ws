@@ -7,6 +7,30 @@
     calibrate
     joint_offset_parameters_file
   ">
+
+      <!-- 定義角度轉弧度常數 -->
+    <xacro:property name="deg_to_rad" value="${pi / 180}" />
+
+    <!-- 各關節的 position limits（單位：弧度） -->
+    <xacro:property name="j1_min" value="${-170 * deg_to_rad}" />
+    <xacro:property name="j1_max" value="${ 170 * deg_to_rad}" />
+
+    <xacro:property name="j2_min" value="${-42 * deg_to_rad}" />
+    <xacro:property name="j2_max" value="${ 90 * deg_to_rad}" />
+
+    <xacro:property name="j3_min" value="${-89 * deg_to_rad}" />
+    <xacro:property name="j3_max" value="${ 52 * deg_to_rad}" />
+
+    <xacro:property name="j4_min" value="${-165 * deg_to_rad}" />
+    <xacro:property name="j4_max" value="${ 165 * deg_to_rad}" />
+
+    <xacro:property name="j5_min" value="${-105 * deg_to_rad}" />
+    <xacro:property name="j5_max" value="${ 105 * deg_to_rad}" />
+
+    <xacro:property name="j6_min" value="${-155 * deg_to_rad}" />
+    <xacro:property name="j6_max" value="${ 155 * deg_to_rad}" />
+    <!-- ====================================================== -->
+
     <xacro:property name="joint_offset_parameters"
       value="${xacro.load_yaml(joint_offset_parameters_file)}"/>
     <ros2_control name="${name}" type="system">
@@ -17,8 +41,8 @@
       </hardware>
       <joint name="joint_1">
         <command_interface name="position">
-          <param name="min">{-170*pi/180}</param>
-          <param name="max">{170*pi/180}</param>
+          <param name="min">${j1_min}</param>
+          <param name="max">${j1_max}</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -27,8 +51,8 @@
       </joint>
       <joint name="joint_2">
         <command_interface name="position">
-          <param name="min">{-42*pi/180}</param>
-          <param name="max">{90*pi/180}</param>
+          <param name="min">${j2_min}</param>
+          <param name="max">${j2_max}</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -37,8 +61,8 @@
       </joint>
       <joint name="joint_3">
         <command_interface name="position">
-          <param name="min">{-89*pi/180}</param>
-          <param name="max">{52*pi/180}</param>
+          <param name="min">${j3_min}</param>
+          <param name="max">${j3_max}</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -47,8 +71,8 @@
       </joint>
       <joint name="joint_4">
         <command_interface name="position">
-          <param name="min">{-165*pi/180}</param>
-          <param name="max">{165*pi/180}</param>
+          <param name="min">${j4_min}</param>
+          <param name="max">${j4_max}</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -57,8 +81,8 @@
       </joint>
       <joint name="joint_5">
         <command_interface name="position">
-          <param name="min">{-105*pi/180}</param>
-          <param name="max">{105*pi/180}</param>
+          <param name="min">${j5_min}</param>
+          <param name="max">${j5_max}</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -67,8 +91,8 @@
       </joint>
       <joint name="joint_6">
         <command_interface name="position">
-          <param name="min">{-155*pi/180}</param>
-          <param name="max">{155*pi/180}</param>
+          <param name="min">${j6_min}</param>
+          <param name="max">${j6_max}</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>

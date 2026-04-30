@@ -35,7 +35,7 @@ class ARServoGripperHWInterface : public hardware_interface::SystemInterface {
 
   ArduinoNanoDriver driver_;
   double position_ = 0.0;
-  double velocity_ = 0.0;
+  double velocity_ = 1.0;
   double position_command_ = 0.0;
 
   int linear_to_angular_pos(double linear_pos) {

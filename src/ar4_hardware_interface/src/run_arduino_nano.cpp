@@ -5,15 +5,15 @@
 
 int main() {
   ar4_hardware_interface::ArduinoNanoDriver driver;
-  bool success = driver.init("/dev/ttyUSB0", 9600);
+  bool success = driver.init("/dev/ttyACM1", 115200);
   if (!success) {
     return -1;
   }
 
   while (true) {
     std::string reply;
-    reply = driver.writePosition(10);
-    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    // reply = driver.writePosition(10);
+    // std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     driver.writePosition(30);
     std::this_thread::sleep_for(std::chrono::milliseconds(2000));
   }

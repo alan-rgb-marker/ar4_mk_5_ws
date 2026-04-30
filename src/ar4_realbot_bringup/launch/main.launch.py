@@ -37,13 +37,38 @@ from launch.substitutions import PathJoinSubstitution
 
 
 def generate_launch_description():
-    common_stack_include = IncludeLaunchDescription(
+    # common_stack_include = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         PathJoinSubstitution(
+    #             [
+    #                 FindPackageShare("ar4_common"),
+    #                 "launch",
+    #                 "main.launch.py",
+    #             ]
+    #         )
+    #     )
+    # )
+    
+    move_group_include = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution(
                 [
-                    FindPackageShare("ar4_common"),
+                    FindPackageShare("ar4_moveit_config"),
                     "launch",
-                    "main.launch.py",
+                    "move_group.launch.py",
+                ]
+            )
+        )
+    )
+
+    # RViz
+    rviz_include = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution(
+                [
+                    FindPackageShare("ar4_moveit_config"),
+                    "launch",
+                    "moveit_rviz.launch.py",
                 ]
             )
         )
@@ -63,7 +88,9 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
-            common_stack_include,
+            # common_stack_include,
             real_hardware_include,
+            move_group_include,
+            # rviz_include,
         ]
     )

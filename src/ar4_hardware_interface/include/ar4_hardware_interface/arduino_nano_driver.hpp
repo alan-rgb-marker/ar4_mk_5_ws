@@ -17,6 +17,13 @@ class ArduinoNanoDriver {
   void update(std::vector<double>& pos_commands, std::vector<double>& joint_states);
   bool getPosition(int& position);
   bool writePosition(double position);
+  bool transmit(std::string outMsg, std::string& err);
+  void receive(std::string& inMsg);
+  bool getGripperState();
+
+  std::string sendCommand(std::string outMsg);
+
+  bool checkInit(std::string msg);
 
   ArduinoNanoDriver();
 
@@ -30,11 +37,7 @@ class ArduinoNanoDriver {
   double gripper_velocity_ = 0.0;
   double gripper_position_command_ = 0.0;
 
-  std::string sendCommand(std::string outMsg);
-  bool transmit(std::string outMsg, std::string& err);
-  void receive(std::string& inMsg);
-
-  bool checkInit(std::string msg);
+  
 };
 
 }  // namespace ar4_hardware_interface

@@ -17,17 +17,14 @@ bool ArduinoNanoDriver::init(std::string port, int baudrate) {
     return false;
   } else {
     serial_port_.set_option(boost::asio::serial_port_base::baud_rate(static_cast<uint32_t>(baudrate)));
+    // serial_port_.set_option(boost::asio::serial_port_base::character_size(8));
+    // serial_port_.set_option(boost::asio::serial_port_base::stop_bits(boost::asio::serial_port_base::stop_bits::one));
     serial_port_.set_option(boost::asio::serial_port_base::parity(boost::asio::serial_port_base::parity::none));
-    RCLCPP_INFO(logger_, "Successfully connected to serial port %s", port.c_str());
+    // serial_port_.set_option(boost::asio::serial_port_base::flow_control(boost::asio::serial_port_base::flow_control::none));
   }
 
   RCLCPP_INFO(logger_, "Waiting for response from Arduino Nano on port %s", port.c_str());
   std::this_thread::sleep_for(std::chrono::seconds(2));
-  std::string msg = "ST\n";
-  std::string reply = sendCommand(msg);
-  if (!checkInit(reply)) {
-    return false;
-  }
   RCLCPP_INFO(logger_, "Successfully initialised driver on port %s", port.c_str());
   return true;
 }
@@ -41,9 +38,11 @@ std::string ArduinoNanoDriver::sendCommand(std::string outMsg) {
     return "";
   }
 
-  std::string inMsg;
-  receive(inMsg);
-  return inMsg;
+  // std::string inMsg;
+  // receive(inMsg);
+  // RCLCPP_INFO(logger_, "Received message: %s", inMsg.c_str());
+  // return inMsg;
+  return "";
 }
 
 bool ArduinoNanoDriver::transmit(std::string msg, std::string& err) {
@@ -99,13 +98,41 @@ bool ArduinoNanoDriver::getPosition(int& position) {
 }
 
 bool ArduinoNanoDriver::writePosition(double position) {
-  std::string msg = "SV0P" + std::to_string(static_cast<int>(position)) + "\n";
-  std::string reply = sendCommand(msg);
-  if (reply != "Done") {
-    RCLCPP_ERROR(logger_, "Failed to write position %f", position);
-    return false;
-  }
+  std::string cmd = position < -0.2 ? "ON" : "OF";
+  std::string msg = cmd + "X14\n";
+  gripper_position_ = position;
+
+  // std::string msg = "SV0P" + std::to_string(static_cast<int>(position)) + "\n";
+  // std::string reply = sendCommand(msg);
+  sendCommand(msg);
+  // if (reply != "Done") {
+  //   RCLCPP_ERROR(logger_, "Failed to write position %f", position);
+  //   return false;
+  // }
+  RCLCPP_INFO(logger_, "命令： %s", msg.c_str());
   return true;
+}
+
+// 寫一份讀取夾爪狀態的程式 命令是RD
+// bool ArduinoNanoDriver::getGripperState() {
+//   std::string reply = sendCommand("RD\n");
+//   if (reply == "1" )
+//   {
+//     return true;
+//   }
+//   else if (reply == "0")
+//   {
+//     return false;
+//   }
+//   else
+//   {
+//     RCLCPP_ERROR(logger_, "Invalid gripper state received: %s", reply.c_str());
+//     return false;
+//   }
+// }
+bool ArduinoNanoDriver::getGripperState() {
+  RCLCPP_INFO(logger_, "gripper_position_: %f", gripper_position_);
+  return gripper_position_ < -0.2 ? true : false;
 }
 
 }  // namespace ar4_hardware_interface
