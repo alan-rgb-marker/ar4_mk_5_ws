@@ -57,6 +57,14 @@
                 </state_interface>
                 <state_interface name="velocity"/>
             </joint>
+            <joint name="grip_to_base2">
+                <param name="mimic">grip_to_base1</param>
+                <param name="multiplier">1</param>
+            </joint>
+            <joint name="grip_to_base3">
+                <param name="mimic">grip_to_base1</param>
+                <param name="multiplier">1</param>
+            </joint>
 
         </ros2_control>
     </xacro:macro>
