@@ -7,6 +7,7 @@ hardware_interface::CallbackReturn ARHardwareInterface::on_init(const hardware_i
   RCLCPP_INFO(logger_, "Initializing hardware interface...");
 
   if (hardware_interface::SystemInterface::on_init(info) != hardware_interface::CallbackReturn::SUCCESS) {
+    RCLCPP_INFO(logger_, "Failed to initialize hardware interface");
     return hardware_interface::CallbackReturn::ERROR;
   }
 

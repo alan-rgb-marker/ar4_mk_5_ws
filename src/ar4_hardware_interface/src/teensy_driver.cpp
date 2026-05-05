@@ -24,14 +24,8 @@ void TeensyDriver::init(std::string port, int baudrate, int num_joints) {
     RCLCPP_INFO(logger_, "Successfully connected to serial port %s", port.c_str());
   }
 
-  initialised_ = false;
-  std::string msg = "HO\n";
-
-  while (!initialised_) {
-    RCLCPP_INFO(logger_, "Waiting for response from Teensy on port %s", port.c_str());
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    exchange(msg);
-  }
+  initialised_ = true;
+  RCLCPP_INFO(logger_, "Skipping HO handshake as firmware does not support it.");
   RCLCPP_INFO(logger_, "Successfully initialised driver on port %s", port.c_str());
 
   // initialise joint and encoder calibration
@@ -59,22 +53,10 @@ void TeensyDriver::update(std::vector<double>& pos_commands, std::vector<double>
   // For now, just get current positions since Teensy doesn't support direct joint commands
   // TODO: Implement proper joint control or modify Teensy firmware
   // getJointPositions(joint_positions);
-  
-  // // Log the commands (for debugging)
-  // std::string logMsg = "Joint commands received: ";
-  // for (size_t i = 0; i < pos_commands.size(); ++i) {
-  //   logMsg += std::to_string(pos_commands[i]) + " ";
-  // }
-  // RCLCPP_INFO(logger_, "%s", logMsg.c_str());
   static std::string outMsg_tmp = "";
-
-
   //四捨五入
   for (size_t i = 0; i < pos_commands.size(); ++i) {
     pos_commands[i] = (int)(pos_commands[i] * 100) / 100.0;
-    if ((i == 1 || i == 2 || i == 4) && pos_commands[i] != 0) {
-      pos_commands[i] *= -1;
-    }
   } 
 
   std::string outMsg = "RJ";
@@ -84,8 +66,9 @@ void TeensyDriver::update(std::vector<double>& pos_commands, std::vector<double>
   outMsg += "D" + std::to_string(pos_commands[3]);  // J4
   outMsg += "E" + std::to_string(pos_commands[4]);  // J5
   outMsg += "F" + std::to_string(pos_commands[5]);  // J6
-  outMsg += "J70J80J90Sp10Ac10Dc10Rm20W0\n";
-
+  // outMsg += "J70J80J90Sp10Ac10Dc10Rm20W0\n"; 
+  outMsg += "G0Sp10Ac10Dc10Rm20W0\n";
+  
   
   if(outMsg == outMsg_tmp) {
     RCLCPP_INFO_THROTTLE(logger_, clock_, 500, "same pos: %s", outMsg.c_str());
@@ -96,9 +79,6 @@ void TeensyDriver::update(std::vector<double>& pos_commands, std::vector<double>
     RCLCPP_INFO(logger_, "Send msg: %s", outMsg.c_str());
     sendCommand(outMsg_tmp);                 // 發送一次
   }
-
-  // RCLCPP_INFO(logger_, "%s", outMsg.c_str());
-  // getJointPositions(joint_positions);  // 讀取當前位置
 }
 
 void TeensyDriver::calibrateJoints() {
