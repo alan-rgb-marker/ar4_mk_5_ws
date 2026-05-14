@@ -89,7 +89,7 @@ def generate_launch_description():
     return LaunchDescription(
         [
             # common_stack_include,
-            real_hardware_include,
+            # real_hardware_include,
             move_group_include,
             rviz_include,
         ]

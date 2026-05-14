@@ -19,10 +19,11 @@ class TeensyDriver {
   void update(std::vector<double>& pos_commands, std::vector<double>& joint_states);
   void getJointPositions(std::vector<double>& joint_positions);
   void calibrateJoints();
+  void close();
 
   TeensyDriver();
 
- private:
+private:
   bool initialised_;
   std::string version_;
   boost::asio::io_service io_service_;

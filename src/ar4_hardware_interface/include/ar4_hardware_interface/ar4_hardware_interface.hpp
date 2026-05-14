@@ -22,6 +22,7 @@ class ARHardwareInterface : public hardware_interface::SystemInterface {
   hardware_interface::CallbackReturn on_deactivate(const rclcpp_lifecycle::State& previous_state) override;
   hardware_interface::return_type read(const rclcpp::Time& time, const rclcpp::Duration& period) override;
   hardware_interface::return_type write(const rclcpp::Time& time, const rclcpp::Duration& period) override;
+  hardware_interface::CallbackReturn on_shutdown(const rclcpp_lifecycle::State& previous_state) override;
 
  private:
   rclcpp::Logger logger_ = rclcpp::get_logger("ar4_hardware_interface");
