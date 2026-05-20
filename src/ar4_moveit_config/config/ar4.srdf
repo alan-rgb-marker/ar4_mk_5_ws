@@ -10,7 +10,6 @@
     <!--CHAINS: When a chain is specified, all the links along the chain (including endpoints) are included in the group. Additionally, all the joints that are parents to included links are also included. This means that joints along the chain and the parent joint of the base link are included in the group-->
     <!--SUBGROUPS: Groups can also be formed by referencing to already defined group names-->
     <group name="arm">
-        <joint name="joint_world"/>
         <joint name="joint_1"/>
         <joint name="joint_2"/>
         <joint name="joint_3"/>
@@ -34,29 +33,27 @@
         <joint name="joint_6" value="0"/>
     </group_state>
     <group_state name="open" group="gripper">
-        <joint name="grip_to_base1" value="-0.4"/>
+        <joint name="grip_to_base1" value="0.4886"/>
     </group_state>
     <group_state name="close" group="gripper">
-        <joint name="grip_to_base1" value="0.0"/>
+        <joint name="grip_to_base1" value="0.01"/>
     </group_state>
     <!--END EFFECTOR: Purpose: Represent information about an end effector.-->
     <end_effector name="gripper" parent_link="link_6" group="gripper"/>
     <!--VIRTUAL JOINT: Purpose: this element defines a virtual joint between a robot link and an external frame of reference (considered fixed with respect to the robot)-->
-    <!-- <virtual_joint name="virtual_joint" type="fixed" parent_frame="world" child_link="base_link"/> -->
-    <!-- <virtual_joint name="joint_world" type="fixed" parent_frame="base_link" child_link="base_link"/> -->
+    <virtual_joint name="joint_world" type="fixed" parent_frame="world" child_link="base_link"/>
     <!--DISABLE COLLISIONS: By default it is assumed that any link of the robot could potentially come into collision with any other link in the robot. This tag disables collision checking between a specified pair of links. -->
     <disable_collisions link1="base_link" link2="link_1" reason="Adjacent"/>
     <disable_collisions link1="base_link" link2="link_2" reason="Never"/>
     <disable_collisions link1="base_link" link2="link_3" reason="Never"/>
     <disable_collisions link1="base_link" link2="link_4" reason="Never"/>
+    <disable_collisions link1="base_link" link2="link_5" reason="Never"/>
     <disable_collisions link1="base_link" link2="link_6" reason="Never"/>
     <disable_collisions link1="cylinder" link2="gripper" reason="Adjacent"/>
     <disable_collisions link1="cylinder" link2="gripper_2" reason="Adjacent"/>
     <disable_collisions link1="cylinder" link2="gripper_3" reason="Adjacent"/>
     <disable_collisions link1="cylinder" link2="link_1" reason="Never"/>
-    <disable_collisions link1="cylinder" link2="link_2" reason="Never"/>
     <disable_collisions link1="cylinder" link2="link_3" reason="Never"/>
-    <disable_collisions link1="cylinder" link2="link_5" reason="Never"/>
     <disable_collisions link1="cylinder" link2="link_6" reason="Adjacent"/>
     <disable_collisions link1="gripper" link2="gripper_2" reason="Never"/>
     <disable_collisions link1="gripper" link2="gripper_3" reason="Never"/>

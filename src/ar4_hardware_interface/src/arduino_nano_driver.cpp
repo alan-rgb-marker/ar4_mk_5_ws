@@ -98,7 +98,7 @@ bool ArduinoNanoDriver::getPosition(int& position) {
 }
 
 bool ArduinoNanoDriver::writePosition(double position) {
-  std::string cmd = position < -0.2 ? "ON" : "OF";
+  std::string cmd = position > 0.1 ? "ON" : "OF";
   std::string msg = cmd + "X14\n";
   gripper_position_ = position;
 
@@ -132,7 +132,7 @@ bool ArduinoNanoDriver::writePosition(double position) {
 // }
 bool ArduinoNanoDriver::getGripperState() {
   RCLCPP_INFO(logger_, "gripper_position_: %f", gripper_position_);
-  return gripper_position_ < -0.2 ? true : false;
+  return gripper_position_ > 0.1 ? true : false;
 }
 
 }  // namespace ar4_hardware_interface

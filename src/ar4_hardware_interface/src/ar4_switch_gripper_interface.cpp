@@ -71,15 +71,15 @@ hardware_interface::return_type ARSwitchGripperHWInterface::read(
   // RCLCPP_INFO(logger_, "Reading gripper state from hardware...");
 
   bool state = driver_.getGripperState();
-  double j1_pos = (state == true) ? -0.4 : 0.0;
+  double j1_pos = (state == true) ? 0.4886 : 0.01;
 
   for (size_t i = 0; i < info_.joints.size(); ++i) {
     // 三隻夾爪其中一隻應該要反向
-    if (info_.joints[i].name == "grip_to_base2") {
-      positions_[i] = -j1_pos;
-    } else {
+    // if (info_.joints[i].name == "grip_to_base2") {
+      // positions_[i] = -j1_pos;
+    // } else {
       positions_[i] = j1_pos;
-    }
+    // }
     velocities_[i] = 0.0;
   }
 
@@ -94,8 +94,8 @@ hardware_interface::return_type ARSwitchGripperHWInterface::write(
   // Use the actual target value rather than assuming >0 means open.
   // bool should_open = position_command_ > 0.0;
   static std::string gripper_cmd_tmp = "";
-  // 使用 -0.2 作為閾值，避免浮點數誤差導致無法觸發 close
-  std::string gripper_cmd = position_command_ < -0.2 ? "ONX14\n" : "OFX14\n";
+  // 使用 0.1 作為閾值，避免浮點數誤差導致無法觸發 close
+  std::string gripper_cmd = position_command_ > 0.1 ? "ONX14\n" : "OFX14\n";
 
   if (gripper_cmd == gripper_cmd_tmp) {
     return hardware_interface::return_type::OK; // 狀態沒變，直接返回，不阻塞

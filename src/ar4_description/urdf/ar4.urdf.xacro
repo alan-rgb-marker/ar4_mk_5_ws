@@ -119,15 +119,48 @@
     <parent link="link_6"/>
     <child link="cylinder"/>
   </joint>
+  <!-- Link cylinder -->
   <link name="cylinder">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <mass value="0.1"/>
-      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      <mass value="0.01"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
     </inertial>
+    <!-- Part arm_holder -->
+    <visual>
+      <origin xyz="0 0 0.006" rpy="1.5708 0 -3.14159"/>
+      <geometry>
+        <mesh filename="file://$(find ar4_description)/meshes//arm_holder.stl"/>
+      </geometry>
+      <material name="arm_holder_material">
+        <color rgba="0.980392 0.713725 0.00392157 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.006" rpy="1.5708 0 -3.14159"/>
+      <geometry>
+        <mesh filename="file://$(find ar4_description)/meshes/arm_holder.stl"/>
+      </geometry>
+    </collision>
+    <!-- Part deep_camera -->
+    <visual>
+      <origin xyz="0 0.08157 0.039" rpy="-0 0 -3.14159"/>
+      <geometry>
+        <mesh filename="file://$(find ar4_description)/meshes/deep_camera.stl"/>
+      </geometry>
+      <material name="deep_camera_material">
+        <color rgba="1 1 1 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0.08157 0.039" rpy="-0 0 -3.14159"/>
+      <geometry>
+        <mesh filename="file://$(find ar4_description)/meshes/deep_camera.stl"/>
+      </geometry>
+    </collision>
     <!-- Part cylinder -->
     <visual>
-      <origin xyz="0 0 0" rpy="1.5708 -0 -0"/>
+      <origin xyz="0 0 0.006" rpy="1.5708 -0 -3.14159"/>
       <geometry>
         <mesh filename="file://$(find ar4_description)/meshes/cylinder.stl"/>
       </geometry>
@@ -136,31 +169,77 @@
       </material>
     </visual>
     <collision>
-      <origin xyz="0 0 0" rpy="1.5708 -0 -0"/>
+      <origin xyz="0 0 0.006" rpy="1.5708 -0 -3.14159"/>
       <geometry>
         <mesh filename="file://$(find ar4_description)/meshes/cylinder.stl"/>
       </geometry>
     </collision>
+    <!-- Part deep_camera_holder -->
+    <visual>
+      <origin xyz="0 -0.0003 0.006" rpy="-1.5708 0 -3.14159"/>
+      <geometry>
+        <mesh filename="file://$(find ar4_description)/meshes/deep_camera_holder.stl"/>
+      </geometry>
+      <material name="deep_camera_holder_material">
+        <color rgba="0.980392 0.713725 0.00392157 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 -0.0003 0.006" rpy="-1.5708 0 -3.14159"/>
+      <geometry>
+        <mesh filename="file://$(find ar4_description)/meshes/deep_camera_holder.stl"/>
+      </geometry>
+    </collision>
   </link>
+  <!-- Frame camera (dummy link + fixed joint) -->
+  <link name="camera">
+    <origin xyz="0 0 0" rpy="0 -0 0"/>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.01"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+  <joint name="camera_frame" type="fixed">
+    <origin xyz="0.0301 0.08157 0.036" rpy="-0 0 -3.14159"/>
+    <parent link="cylinder"/>
+    <child link="camera"/>
+    <axis xyz="0 0 0"/>
+  </joint>
+  <!-- Frame depth_camera (dummy link + fixed joint) -->
+  <link name="depth_camera">
+    <origin xyz="0 0 0" rpy="0 -0 0"/>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.01"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+  <joint name="depth_camera_frame" type="fixed">
+    <origin xyz="-0.0019 0.08157 0.036" rpy="1.570795 -1.570795 -3.14159"/>
+    <parent link="cylinder"/>
+    <child link="depth_camera"/>
+    <axis xyz="0 0 0"/>
+  </joint>
   <!-- Link gripper -->
   <link name="gripper">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <mass value="0.1"/>
+      <mass value="0.01"/>
       <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
     </inertial>
     <!-- Part gripper -->
     <visual>
-      <origin xyz="-0.056 0.0249 0.003" rpy="1.5708 1.5708 0"/>
+      <origin xyz="-0.0495 -0.0249 0.003" rpy="-1.5708 -1.5708 0"/>
       <geometry>
         <mesh filename="file://$(find ar4_description)/meshes/gripper.stl"/>
       </geometry>
       <material name="gripper_material">
-        <color rgba="0.647059 0.647059 0.647059 1"/>
+        <color rgba="0.980392 0.713725 0.00392157 1"/>
       </material>
     </visual>
     <collision>
-      <origin xyz="-0.056 0.0249 0.003" rpy="1.5708 1.5708 0"/>
+      <origin xyz="-0.0495 -0.0249 0.003" rpy="-1.5708 -1.5708 0"/>
       <geometry>
         <mesh filename="file://$(find ar4_description)/meshes/gripper.stl"/>
       </geometry>
@@ -168,31 +247,31 @@
   </link>
   <!-- Joint from cylinder to gripper -->
   <joint name="grip_to_base1" type="revolute">
-    <origin xyz="0.003 -0.0249 0.056" rpy="-1.5708 -1.26477 1.5708"/>
+    <origin xyz="0.020064 -0.0150481 0.0545" rpy="1.5708 -1.0821 2.61799"/>
     <parent link="cylinder"/>
     <child link="gripper"/>
     <axis xyz="0 0 1"/>
-    <limit effort="10" velocity="10" lower="-0.916889" upper="0.182668"/>
+    <limit effort="10" velocity="10" lower="-0.001" upper="0.488692"/>
   </joint>
   <!-- Link gripper_2 -->
   <link name="gripper_2">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <mass value="0.1"/>
+      <mass value="0.01"/>
       <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
     </inertial>
     <!-- Part gripper_2 -->
     <visual>
-      <origin xyz="-0.056 -0.0249 0.003" rpy="-1.5708 -1.5708 0"/>
+      <origin xyz="-0.0495 -0.0249 0.003" rpy="-1.5708 -1.5708 0"/>
       <geometry>
         <mesh filename="file://$(find ar4_description)/meshes/gripper.stl"/>
       </geometry>
       <material name="gripper_2_material">
-        <color rgba="0.647059 0.647059 0.647059 1"/>
+        <color rgba="0.980392 0.713725 0.00392157 1"/>
       </material>
     </visual>
     <collision>
-      <origin xyz="-0.056 -0.0249 0.003" rpy="-1.5708 -1.5708 0"/>
+      <origin xyz="-0.0495 -0.0249 0.003" rpy="-1.5708 -1.5708 0"/>
       <geometry>
         <mesh filename="file://$(find ar4_description)/meshes/gripper.stl"/>
       </geometry>
@@ -200,32 +279,32 @@
   </link>
   <!-- Joint from cylinder to gripper_2 -->
   <joint name="grip_to_base2" type="revolute">
-    <origin xyz="-0.020064 0.0150481 0.056" rpy="1.5708 -1.26477 -0.523599"/>
+    <origin xyz="-0.023064 -0.00985192 0.0545" rpy="1.5708 -1.0821 0.523599"/>
     <parent link="cylinder"/>
     <child link="gripper_2"/>
     <axis xyz="0 0 1"/>
-    <limit effort="10" velocity="10" lower="-0.182668" upper="0.916889"/>
-    <mimic joint="grip_to_base1" multiplier="-1.0"/>
+    <limit effort="10" velocity="10" lower="-0.001" upper="0.488692"/>
+    <mimic joint="grip_to_base1" multiplier="1.0"/>
   </joint>
   <!-- Link gripper_3 -->
   <link name="gripper_3">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <mass value="0.1"/>
+      <mass value="0.01"/>
       <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
     </inertial>
     <!-- Part gripper_3 -->
     <visual>
-      <origin xyz="-0.056 0.0249 0.003" rpy="1.5708 1.5708 0"/>
+      <origin xyz="-0.0495 -0.0249 0.003" rpy="-1.5708 -1.5708 0"/>
       <geometry>
         <mesh filename="file://$(find ar4_description)/meshes/gripper.stl"/>
       </geometry>
       <material name="gripper_3_material">
-        <color rgba="0.647059 0.647059 0.647059 1"/>
+        <color rgba="0.980392 0.713725 0.00392157 1"/>
       </material>
     </visual>
     <collision>
-      <origin xyz="-0.056 0.0249 0.003" rpy="1.5708 1.5708 0"/>
+      <origin xyz="-0.0495 -0.0249 0.003" rpy="-1.5708 -1.5708 0"/>
       <geometry>
         <mesh filename="file://$(find ar4_description)/meshes/gripper.stl"/>
       </geometry>
@@ -233,12 +312,12 @@
   </link>
   <!-- Joint from cylinder to gripper_3 -->
   <joint name="grip_to_base3" type="revolute">
-    <origin xyz="0.020064 0.0150481 0.056" rpy="-1.5708 -1.26477 -2.61799"/>
+    <origin xyz="0.003 0.0249 0.0545" rpy="1.5708 -1.0821 -1.5708"/>
     <parent link="cylinder"/>
     <child link="gripper_3"/>
     <axis xyz="0 0 1"/>
-    <limit effort="10" velocity="10" lower="-0.916889" upper="0.182668"/>
-    <mimic joint="grip_to_base2" multiplier="-1.0"/>
+    <limit effort="10" velocity="10" lower="-0.001" upper="0.488692"/>
+    <mimic joint="grip_to_base1" multiplier="1.0"/>
   </joint>
 
 </robot>

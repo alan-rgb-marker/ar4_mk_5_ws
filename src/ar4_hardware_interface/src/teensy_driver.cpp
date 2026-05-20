@@ -79,7 +79,7 @@ namespace ar4_hardware_interface
     outMsg += "E" + std::to_string(pos_commands[4]); // J5
     outMsg += "F" + std::to_string(pos_commands[5]); // J6
     // outMsg += "J70J80J90Sp10Ac10Dc10Rm20W0\n";
-    outMsg += "G0Sp10Ac10Dc10Rm20W0\n";
+    outMsg += "G0Sp100Ac10Dc10Rm20W0\n";
 
     if (outMsg == outMsg_tmp)
     {

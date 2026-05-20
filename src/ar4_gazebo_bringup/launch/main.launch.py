@@ -65,7 +65,17 @@ def generate_launch_description():
                     "moveit_rviz.launch.py",
                 ]
             )
-        )
+        ),
+        launch_arguments={
+            "use_sim_time": "true",
+            "rviz_config": PathJoinSubstitution(
+                [
+                    FindPackageShare("ar4_gazebo_sim"),
+                    "config",
+                    "moveit.rviz",
+                ]
+            ),
+        }.items()
     )
 
     gz_sim_include = IncludeLaunchDescription(
