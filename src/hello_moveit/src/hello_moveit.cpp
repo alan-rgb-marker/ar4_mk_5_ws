@@ -55,7 +55,7 @@ int main(int argc, char **argv)
   // 目標位置
   target_pose.pose.position.x = 0.3;
   target_pose.pose.position.y = 0.0;
-  target_pose.pose.position.z = 0.289;
+  target_pose.pose.position.z = 0.1562; // 0.289;
 
   // 姿態 Quaternion
   target_pose.pose.orientation.x = 0.707;

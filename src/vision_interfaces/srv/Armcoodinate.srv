@@ -1,0 +1,3 @@
+string result
+---
+geometry_msgs/PoseStamped arm_cood
