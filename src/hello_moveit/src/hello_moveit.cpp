@@ -1,11 +1,15 @@
 #include <rclcpp/rclcpp.hpp>
 
-#include <moveit/move_group_interface/move_group_interface.h>
+#include <moveit/move_group_interface/move_group_interface.hpp>
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <vision_interfaces/srv/armcoodinate.hpp>
 
 #include <thread>
 #include <chrono>
+#include <string>
+
+using namespace std::chrono_literals;
 
 int main(int argc, char **argv)
 {
@@ -49,6 +53,58 @@ int main(int argc, char **argv)
 
   geometry_msgs::msg::PoseStamped target_pose;
 
+  rclcpp::Client<vision_interfaces::srv::Armcoodinate>::SharedPtr arm_cood_client = 
+    node->create_client<vision_interfaces::srv::Armcoodinate>("Armcoodinate");
+
+  auto arm_cood_request = std::make_shared<vision_interfaces::srv::Armcoodinate::Request>();
+  std::string get_cood_cmd = "get_coordinates";
+  arm_cood_request->result = get_cood_cmd;
+
+  while (!arm_cood_client->wait_for_service(1s))
+  {
+    // if (!rclcpp::ok())
+    // {
+    //   /* code */
+    // }
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
+  }
+
+  auto result = arm_cood_client->async_send_request(arm_cood_request);
+
+  if (result.wait_for(std::chrono::seconds(3)) ==
+      std::future_status::ready)
+  {
+    auto response = result.get();
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood frame_id: %s", response->arm_cood.header.frame_id);
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood position x: %f", response->arm_cood.pose.position.x);
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood position y: %f", response->arm_cood.pose.position.y);
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood position z: %f", response->arm_cood.pose.position.z);
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood orientation x: %f", response->arm_cood.pose.orientation.x);
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood orientation y: %f", response->arm_cood.pose.orientation.y);
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood orientation z: %f", response->arm_cood.pose.orientation.z);
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood orientation w: %f", response->arm_cood.pose.orientation.w);
+    // target_pose.header.frame_id = response->arm_cood.header.frame_id;
+    target_pose.header.frame_id = "base_link";
+
+    // 目標位置
+    target_pose.pose.position.x = response->arm_cood.pose.position.x;
+    target_pose.pose.position.y = response->arm_cood.pose.position.y;
+    target_pose.pose.position.z = response->arm_cood.pose.position.z;
+
+    // 姿態 Quaternion
+    target_pose.pose.orientation.x = response->arm_cood.pose.orientation.x;
+    target_pose.pose.orientation.y = response->arm_cood.pose.orientation.y;
+    target_pose.pose.orientation.z = response->arm_cood.pose.orientation.z;
+    target_pose.pose.orientation.w = response->arm_cood.pose.orientation.w;
+    // 設定目標
+    move_group.setPoseTarget(target_pose);
+  }
+  else
+  {
+    RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Failed to call service add_three_ints"); // CHANGE
+  }
+
+  /*
   // 指定座標系
   target_pose.header.frame_id = "base_link";
 
@@ -65,6 +121,7 @@ int main(int argc, char **argv)
 
   // 設定目標
   move_group.setPoseTarget(target_pose);
+  */
 
   // 規劃
   moveit::planning_interface::MoveGroupInterface::Plan arm_plan;
