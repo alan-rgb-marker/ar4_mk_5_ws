@@ -66,5 +66,63 @@
         </visual>
       </link>
     </model>
+
+    <!-- 在 </world> 前面加入 -->
+    <model name="wheel_holder_model">
+      <static>false</static> 
+      <!-- <pose>0.75 0.0 0.18 1.5708 0 -1.5708</pose>  -->
+      <!-- <pose>0.75 0.0 0.085 0 0 0</pose>  這個0.85是架子的模型剛好處碰到地面-->
+      <pose>0.45 0.0 0.085 0 0 0</pose> 
+      <link name="wheel_holder_link">
+        
+
+        <gravity>false</gravity>
+
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>file:///home/alan/Moveit2/ar4_mk_5_ws/src/vision_yolo_depth/model/wheel-holder-no.stl</uri>
+              <scale>0.001 0.001 0.001</scale> 
+              <!-- <scale>1 1 1</scale>  -->
+            </mesh>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>file:///home/alan/Moveit2/ar4_mk_5_ws/src/vision_yolo_depth/model/wheel-holder-no.stl</uri>
+              <scale>0.001 0.001 0.001</scale>
+              <!-- <scale>1 1 1</scale> -->
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>1.0 0.5 0.0 1</ambient>
+            <diffuse>1.0 0.5 0.0 1</diffuse>
+            <specular>0.5 0.5 0.5 1</specular>
+          </material>
+        </visual>
+
+        <inertial>
+          <mass>0.5</mass> <inertia>
+            <ixx>0.001</ixx>
+            <ixy>0.0</ixy>
+            <ixz>0.0</ixz>
+            <iyy>0.001</iyy>
+            <iyz>0.0</iyz>
+            <izz>0.001</izz>
+          </inertia>
+        </inertial>
+      </link>
+      <plugin
+        filename="gz-sim-track-controller-system"
+        name="gz::sim::systems::TrackController">
+        <!-- 設置初始的線性移動速度 (X Y Z)，這裡設定 X 軸每秒前進 0.2 公尺 -->
+        <link>wheel_holder_link</link>
+        <initial_linear_velocity>0.2 0 0</initial_linear_velocity>
+      </plugin>
+
+    </model>
+    
   </world>
 </sdf>

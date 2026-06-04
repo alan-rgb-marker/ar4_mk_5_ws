@@ -320,4 +320,14 @@
     <mimic joint="grip_to_base1" multiplier="1.0"/>
   </joint>
 
+  <!-- Frame gripper_tcp (Tool Center Point) -->
+  <link name="gripper_tcp"/>
+  
+  <joint name="gripper_tcp_joint" type="fixed">
+    <!-- 這裡的 xyz 可以根據您夾爪末端的實際距離進行微調，目前 z 暫設為 0.1515 (15.15公分) -->
+    <origin xyz="0 0 0.1515" rpy="0 0 0"/>
+    <parent link="link_6"/>
+    <child link="gripper_tcp"/>
+  </joint>
+
 </robot>

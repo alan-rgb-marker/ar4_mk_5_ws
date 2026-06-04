@@ -28,6 +28,8 @@ from vision_interfaces.srv import Armcoodinate
 from tf2_ros import TransformException
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
+from tf2_geometry_msgs import do_transform_pose
+from scipy.spatial.transform import Rotation as R
 
 class DepthSubscriber(Node):
 
@@ -108,7 +110,7 @@ class DepthSubscriber(Node):
     def camera_callback(self, msg):
         camera_image = self.camera_bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         
-        wheel_results = self.model(camera_image, stream=True, conf=0.80)
+        wheel_results = self.model(camera_image, stream=True, conf=0.80, verbose=False)
         
         for r in wheel_results:
             annotated_frame = r.plot()
@@ -125,22 +127,27 @@ class DepthSubscriber(Node):
             self.get_logger().error(f'Could not get transform: {e}')
             return
 
-        if self.k_received:
-            self.x = transform.transform.translation.x + abs(self.center_x - self.k[2]) * self.distance / self.k[0]  # 假設 k[0] 是焦距 fx k[2] 是主點 cx
-            self.y = transform.transform.translation.y + abs(self.center_y - self.k[5]) * self.distance / self.k[4]  # 假設 k[4] 是焦距 fy k[5] 是主點 cy
-            z = transform.transform.translation.z - self.distance
-            self.get_logger().info(f"tf距離z： {z}")
-            if z < 0.1562 and self.gripper_state <= 0.1:
-                self.z = 0.1562
-            elif z < 0.1515 and self.gripper_state > 0.1:
-                self.z = 0.1515
-            else:
-                self.z = z + 0.08 # 增加8公分避免夾爪碰撞
-            self.get_logger().info(f"tf距離self.z： {self.z}")
-            w = transform.transform.rotation.w
-            # self.get_logger().info(f"座標： x: {self.x}, y: {self.y}, z: {self.z}, w: {w}")
-            # self.get_logger().info(f"距離： {self.distance}")
-            # self.get_logger().info(f"轉換tf距離： {transform.transform.translation.z}")
+        if self.k_received is not True:
+            return
+        transform = self.tf_buffer.lookup_transform('base_link', 'depth_camera', rclpy.time.Time())
+        
+        self.x = transform.transform.translation.x + abs(self.center_x - self.k[2]) * self.distance / self.k[0]  # 假設 k[0] 是焦距 fx k[2] 是主點 cx
+        self.y = transform.transform.translation.y + abs(self.center_y - self.k[5]) * self.distance / self.k[4]  # 假設 k[4] 是焦距 fy k[5] 是主點 cy
+        z = transform.transform.translation.z - self.distance
+        self.get_logger().info(f"tf距離z： {z}")
+        if z < 0.1562 and self.gripper_state <= 0.1:
+            self.z = 0.1562
+        elif z < 0.1515 and self.gripper_state > 0.1:
+            self.z = 0.1515
+        else:
+            self.z = z + 0.08 # 增加8公分避免夾爪碰撞
+        # self.get_logger().info(f"tf距離self.z： {self.z}")
+        w = transform.transform.rotation.w
+        # self.get_logger().info(f"座標： x: {self.x}, y: {self.y}, z: {self.z}, w: {w}")
+        # self.get_logger().info(f"距離： {self.distance}")
+        # self.get_logger().info(f"轉換tf距離： {transform.transform.translation.z}")
+        test = abs(639 - self.k[2]) * self.distance / self.k[0]
+        self.get_logger().info(f"夾爪狀態： {test}")
 
     def joint_state_callback(self, msg):
         # 這裡可以解析夾爪的關節狀態，例如開合程度等
@@ -152,19 +159,39 @@ class DepthSubscriber(Node):
         if request.result == 'get_coordinates':
             pose = PoseStamped()
             pose.header.frame_id = "base_link"
-            pose.pose.position.x = self.x
-            pose.pose.position.y = self.y
-            pose.pose.position.z = self.z
+            # pose.pose.position.x = self.x
+            # pose.pose.position.y = self.y
+            # pose.pose.position.z = self.z
             # pose.pose.position.x = 0.3
             # pose.pose.position.y = 0.0
             # pose.pose.position.z = 0.1562
+            # pose.pose.position.x = 0.6;
+            # pose.pose.position.y = 0.001;
+            # pose.pose.position.z = 0.2;
+            # pose.pose.position.x = 0.7067;
+            # pose.pose.position.y = 0.0018;
+            # pose.pose.position.z = 0.1379;
+            pose.pose.position.x = 0.4818;
+            pose.pose.position.y = 0.005;
+            pose.pose.position.z = 0.19312;
+            # pose.pose.position.x = 0.287;
+            # pose.pose.position.y = 0.000;
+            # pose.pose.position.z = 0.287; # 0.289;
 
 
-            pose.pose.orientation.x = 0.707
-            pose.pose.orientation.y = 0.707
-            pose.pose.orientation.z = 0.0
-            pose.pose.orientation.w = 0.0
-            self.get_logger().info(f"座標： x: {self.x}, y: {self.y}, z: {self.z}")
+            # pose.pose.orientation.x = 0.707
+            # pose.pose.orientation.y = 0.707
+            # pose.pose.orientation.z = 0.0
+            # pose.pose.orientation.w = 0.0
+            # pose.pose.orientation.x = 0.612
+            # pose.pose.orientation.y = 0.612
+            # pose.pose.orientation.z = 0.354
+            # pose.pose.orientation.w = 0.354
+            pose.pose.orientation.x = 0.704
+            pose.pose.orientation.y = 0.704
+            pose.pose.orientation.z = 0.062
+            pose.pose.orientation.w = 0.062
+            # self.get_logger().info(f"座標： x: {self.x}, y: {self.y}, z: {self.z}")
             response.arm_cood = pose   # ✔ 正確
 
             return response

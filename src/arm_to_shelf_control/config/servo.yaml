@@ -1,0 +1,97 @@
+# ==========================================
+# GENERAL CONFIG (一般設定)
+# ==========================================
+thread_priority: 40
+publish_period: 0.01          # 100Hz 的發布頻率
+max_expected_latency: 0.1
+
+# 【注意】請確認你的 AR4 MoveIt 設定檔中，手臂的 Group 名稱。
+# 通常叫 "arm" 或 "ar_arm"，這裡先以 "arm" 為主，若不對請修改此行。
+move_group_name: "arm"        
+active_subgroup: ""
+
+# ==========================================
+# MOVEIT FRAMES
+# ==========================================
+
+planning_frame: base_link
+
+ee_frame_name: gripper_tcp
+
+robot_link_command_frame: base_link
+
+# ==========================================
+# INCOMING COMMAND SETTINGS (輸入指令設定)
+# ==========================================
+pose_command_in_topic: "~/pose_target_cmds"
+cartesian_command_in_topic: "~/delta_twist_cmds"
+joint_command_in_topic: "~/delta_joint_cmds"
+command_in_type: "unitless"   # unitless 代表接受 [-1.0 到 1.0] 的搖桿訊號
+
+scale:
+  linear: 0.4                 # 線速度縮放比例
+  rotational: 0.8             # 角速度縮放比例
+  joint: 0.5                  # 關節 Jog 縮放比例
+  
+incoming_command_timeout: 0.1
+
+# ==========================================
+# TWIST SETTINGS (末端速度設定)
+# ==========================================
+apply_twist_commands_about_ee_frame: true
+
+# ==========================================
+# POSE TRACKING SETTINGS (姿態追蹤容許誤差)
+# ==========================================
+pose_tracking:
+  linear_tolerance: 0.001
+  angular_tolerance: 0.01
+
+# ==========================================
+# OUTGOING COMMAND SETTINGS (輸出給 AR4 控制器的設定)
+# ==========================================
+status_topic: "~/status"
+command_out_topic: "/arm_controller/joint_trajectory" # 已對接你的 AR4 控制器
+command_out_type: "trajectory_msgs/JointTrajectory"
+
+publish_joint_positions: true
+publish_joint_velocities: true
+publish_joint_accelerations: false
+
+# ==========================================
+# PLANNING SCENE MONITOR (場景與關節監聽)
+# ==========================================
+monitored_planning_scene_topic: "/planning_scene"     # 已對接你的 Topic
+joint_topic: "/joint_states"                         # 已對接你的 Topic
+check_octomap_collisions: false
+is_primary_planning_scene_monitor: true
+
+# ==========================================
+# SMOOTHING PLUGIN (平滑濾波器)
+# ==========================================
+use_smoothing: true
+smoothing_filter_plugin_name: "online_signal_smoothing::ButterworthFilterPlugin"
+
+# ==========================================
+# COLLISION MONITOR (碰撞監測)
+# ==========================================
+check_collisions: false
+self_collision_proximity_threshold: 0.01
+scene_collision_proximity_threshold: 0.02
+collision_check_rate: 10.0
+
+# ==========================================
+# SINGULARITY CHECKING (奇異點檢查)
+# ==========================================
+lower_singularity_threshold: 17.0
+hard_stop_singularity_threshold: 30.0
+leaving_singularity_threshold_multiplier: 2.0
+singularity_step_scale: 0.01
+
+# ==========================================
+# JOINT LIMITING (關節極限保護)
+# ==========================================
+halt_all_joints_in_joint_mode: true
+halt_all_joints_in_cartesian_mode: true
+joint_limit_margins: [0.1]
+override_velocity_scaling_factor: 0.0

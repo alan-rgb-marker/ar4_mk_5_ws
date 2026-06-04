@@ -75,27 +75,27 @@ int main(int argc, char **argv)
       std::future_status::ready)
   {
     auto response = result.get();
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood frame_id: %s", response->arm_cood.header.frame_id);
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood position x: %f", response->arm_cood.pose.position.x);
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood position y: %f", response->arm_cood.pose.position.y);
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood position z: %f", response->arm_cood.pose.position.z);
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood orientation x: %f", response->arm_cood.pose.orientation.x);
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood orientation y: %f", response->arm_cood.pose.orientation.y);
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood orientation z: %f", response->arm_cood.pose.orientation.z);
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood orientation w: %f", response->arm_cood.pose.orientation.w);
+    // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood frame_id: %s", response->arm_cood.header.frame_id);
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood position x: %f", response->arm_cood.position.x);
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood position y: %f", response->arm_cood.position.y);
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood position z: %f", response->arm_cood.position.z);
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood orientation x: %f", response->arm_cood.orientation.x);
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood orientation y: %f", response->arm_cood.orientation.y);
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood orientation z: %f", response->arm_cood.orientation.z);
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "ar4 arm cood orientation w: %f", response->arm_cood.orientation.w);
     // target_pose.header.frame_id = response->arm_cood.header.frame_id;
     target_pose.header.frame_id = "base_link";
 
     // 目標位置
-    target_pose.pose.position.x = response->arm_cood.pose.position.x;
-    target_pose.pose.position.y = response->arm_cood.pose.position.y;
-    target_pose.pose.position.z = response->arm_cood.pose.position.z;
+    target_pose.pose.position.x = response->arm_cood.position.x;
+    target_pose.pose.position.y = response->arm_cood.position.y;
+    target_pose.pose.position.z = response->arm_cood.position.z;
 
     // 姿態 Quaternion
-    target_pose.pose.orientation.x = response->arm_cood.pose.orientation.x;
-    target_pose.pose.orientation.y = response->arm_cood.pose.orientation.y;
-    target_pose.pose.orientation.z = response->arm_cood.pose.orientation.z;
-    target_pose.pose.orientation.w = response->arm_cood.pose.orientation.w;
+    target_pose.pose.orientation.x = response->arm_cood.orientation.x;
+    target_pose.pose.orientation.y = response->arm_cood.orientation.y;
+    target_pose.pose.orientation.z = response->arm_cood.orientation.z;
+    target_pose.pose.orientation.w = response->arm_cood.orientation.w;
     // 設定目標
     move_group.setPoseTarget(target_pose);
   }
@@ -152,7 +152,7 @@ int main(int argc, char **argv)
   RCLCPP_INFO(node->get_logger(),
               "執行夾爪 open");
 
-  gripper_group.setNamedTarget("open");
+  gripper_group.setNamedTarget("close");
 
   moveit::planning_interface::MoveGroupInterface::Plan gripper_plan;
 

@@ -1,0 +1,17 @@
+ros2 launch orbbec_camera gemini_330_series.launch.py //深度相機指令
+
+// client指令
+ros2 service call /Armcoodinate vision_interfaces/srv/Armcoodinate "{result: 'get_coordinates'}"
+
+
+colcon build --packages-select vision_yolo_depth && source install/setup.bash && clear && ros2 run vision_yolo_depth depth_camera --ros-args -p use_sim_time:=true
+
+colcon build --packages-select hello_moveit && source install/setup.bash && clear && ros2 launch hello_moveit hello_moveit.launch.py 
+
+colcon build --packages-select vision_yolo_depth && source install/setup.bash && clear && ros2 run vision_yolo_depth depth_camera --ros-args -p use_sim_time:=true
+
+colcon build --packages-select ar4_arm_servo_control && source install/setup.bash && clear && ros2 launch ar4_arm_servo_control demo_servo.launch.py 
+
+ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p stamped:=true -p frame_id:=base_link -p use_sim_time:=false -r /cmd_vel:=/servo_node/delta_twist_cmds
+
+ros2 service call /servo_node/switch_command_type moveit_msgs/srv/ServoCommandType "{command_type: 1}"

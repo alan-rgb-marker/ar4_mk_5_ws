@@ -1,0 +1,21 @@
+# 這是 servo.yaml 的範例內容，請根據你的機器人和需求進行修改
+move_group_name: "arm"                    # 你的 move_group 名稱
+planning_frame: "base_link"               # 通常是 base_link
+ee_frame: "link_6"                         # 你的末端執行器 frame
+joint_command_out_topic: "/joint_trajectory_controller/joint_trajectory"  # 改成你的 controller topic
+joint_command_out_type: "trajectory_msgs/JointTrajectory"  # 或 Float64MultiArray
+joint_state_topic: "joint_states"          # 你的關節狀態 topic
+
+# === 命令輸入輸出 ===
+command_in_type: "speed_units"            # unitless（搖桿）或 speed_units（真實速度）
+cartesian_command_in_topic: "delta_twist_cmds"
+joint_command_in_topic: "delta_joint_cmds"
+command_out_topic: "/arm_controller/joint_trajectory"   # 改成你的 controller topic
+command_out_type: "trajectory_msgs/JointTrajectory"     # 或 Float64MultiArray
+
+# 其他重要參數
+max_linear_speed: 0.3
+max_angular_speed: 1.57
+check_collisions: true
+collision_check_rate: 10.0
+use_smoothing: true

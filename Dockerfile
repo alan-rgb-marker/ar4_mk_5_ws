@@ -58,7 +58,8 @@ RUN sudo nala install -y \
     ros-jazzy-moveit-simple-controller-manager \
     ros-jazzy-cv-bridge \
     ros-jazzy-image-transport \
-    ros-jazzy-vision-opencv
+    ros-jazzy-vision-opencv \
+    ros-jazzy-moveit-servo
 
 RUN sudo nala full-upgrade -y
 
@@ -66,7 +67,7 @@ RUN cd /home/$USERNAME/Moveit2/ar4_mk_5_ws \
     && rosdep update && rosdep install -y --from-paths src --ignore-src --rosdistro jazzy -r\
     && sudo chown -R $USERNAME:$USERNAME .
 
-RUN sudo apt install -y libgflags-dev nlohmann-json3-dev \
+RUN sudo nala install -y libgflags-dev nlohmann-json3-dev \
     ros-$ROS_DISTRO-image-transport ros-${ROS_DISTRO}-image-transport-plugins ros-${ROS_DISTRO}-compressed-image-transport \
     ros-$ROS_DISTRO-image-publisher ros-$ROS_DISTRO-camera-info-manager \
     ros-$ROS_DISTRO-diagnostic-updater ros-$ROS_DISTRO-diagnostic-msgs ros-$ROS_DISTRO-statistics-msgs ros-$ROS_DISTRO-xacro \
@@ -79,15 +80,15 @@ RUN sudo nala install -y ros-jazzy-orbbec-camera ros-jazzy-orbbec-description
 
 RUN sudo nala full-upgrade -y
 
-RUN pip install --break-system-packages ultralytics \
-    opencv-python \
-    numpy \
-    scipy \
-    open3d \
-    transforms3d \
-    supervision \
-    filterpy \
-    matplotlib
+RUN pip install --break-system-packages ultralytics 
+    # opencv-python \
+    # numpy \
+    # scipy \
+    # open3d \
+    # transforms3d \
+    # supervision \
+    # filterpy \
+    # matplotlib
 
 RUN sudo nala install -y ros-jazzy-ros-gz \
     ros-jazzy-ros-gz-sim \

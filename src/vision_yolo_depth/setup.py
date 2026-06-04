@@ -25,6 +25,8 @@ setup(
     entry_points={
         'console_scripts': [
             'depth_camera = vision_yolo_depth.vision:main',
+            'shelf_pose_detect = vision_yolo_depth.shelf_pose_detect_service:main',
+            'demo_shelf_pose_detect = vision_yolo_depth.demo_shelf_pose_detect:main',
         ],
     },
 )
