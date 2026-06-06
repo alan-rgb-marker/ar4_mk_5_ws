@@ -33,7 +33,7 @@ private:
     std::unique_ptr<moveit::planning_interface::MoveGroupInterface> move_group_;
     std::unique_ptr<moveit::planning_interface::MoveGroupInterface> gripper_group_;
 
-    // rclcpp::Time shelf_feature_time;
+    rclcpp::Duration shelf_feature_time;
     float shelf_vel;
 
 public:
@@ -51,7 +51,7 @@ public:
 
     void move_to_shelf_pose();
 
-    bool arm_planner(geometry_msgs::msg::Pose &target_pose, std::string state = "normal");
+    bool arm_planner(geometry_msgs::msg::Pose &target_pose, std::string state = "normal", double cli_used_time = 0.0);
 
     bool gripper_planner(std::string target = "close");
 
@@ -75,12 +75,13 @@ int main(int argc, char **argv)
 }
 
 arm_to_shelf_control::arm_to_shelf_control()
-    : Node("move_to_shelf")
+    : Node("move_to_shelf"), shelf_feature_time(0,0)
 {
     view_shelf_coord_client_ = this->create_client<vision_interfaces::srv::Armcoodinate>("view_shelf_coord");
     shelf_coord_client_ = this->create_client<vision_interfaces::srv::ShelfCoodinate>("shelf_coord");
     servo_twist_client_ = this->create_client<vision_interfaces::srv::TwistMoveitServo>("servo_twist");
     trigger_run_service_ = this->create_service<std_srvs::srv::Trigger>("run_service", std::bind(&arm_to_shelf_control::run_callback, this, std::placeholders::_1, std::placeholders::_2));
+    // shelf_feature_time = rclcpp::Duration(0, 0);
 }
 
 arm_to_shelf_control::~arm_to_shelf_control()
@@ -177,7 +178,9 @@ void arm_to_shelf_control::move_to_shelf_pose()
 {
     auto shelf_coord_request = std::make_shared<vision_interfaces::srv::ShelfCoodinate::Request>();
     shelf_coord_request->req_cmd = "get_shelf_cood";
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "執行到這裡1");
+
+    
+
     while (!shelf_coord_client_->wait_for_service())
     {
         if (!rclcpp::ok())
@@ -187,23 +190,24 @@ void arm_to_shelf_control::move_to_shelf_pose()
         }
         RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
     }
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "執行到這裡2");
-    
+
     auto shelf_coord_reponse = shelf_coord_client_->async_send_request(shelf_coord_request);
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "執行到這裡3");
 
     auto response = shelf_coord_reponse.get();
 
-    // shelf_feature_time = response->future_time;
+    rclcpp::Time start_cli = response->start_pos_time;
     std::string status = response->status_message;
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "執行到這裡");
     shelf_vel = response->shelf_vel;
-    
-    // bool success = arm_planner(response->shelf_pose, "time"); // 寫到這邊就已經讓夾爪移到架子未來位置
-    bool success = arm_planner(response->shelf_pose); // 寫到這邊就已經讓夾爪移到架子未來位置
+
+    rclcpp::Time end_cli = this->now();
+
+    shelf_feature_time = end_cli - start_cli;
+
+    bool success = arm_planner(response->shelf_pose, "time", shelf_feature_time.seconds()); // 寫到這邊就已經讓夾爪移到架子未來位置
+    // bool success = arm_planner(response->shelf_pose); // 寫到這邊就已經讓夾爪移到架子未來位置
 }
 
-bool arm_to_shelf_control::arm_planner(geometry_msgs::msg::Pose &target_pose, std::string state)
+bool arm_to_shelf_control::arm_planner(geometry_msgs::msg::Pose &target_pose, std::string state, double cli_used_time)
 {
     moveit::planning_interface::MoveGroupInterface::Plan arm_plan;
     if (state == "normal")
@@ -219,15 +223,54 @@ bool arm_to_shelf_control::arm_planner(geometry_msgs::msg::Pose &target_pose, st
     }
     else if (state == "time")
     {
-        float distance;
-        do
+        this->move_group_->setPoseTarget(target_pose);
+        bool succes = (this->move_group_->plan(arm_plan) == moveit::core::MoveItErrorCode::SUCCESS);
+
+        if (!succes)
         {
-            target_pose.position.y -= 0.05;
-            move_group_->setPoseTarget(target_pose);
-            bool success = (move_group_->plan(arm_plan) == moveit::core::MoveItErrorCode::SUCCESS);
-            double t = arm_plan.trajectory.joint_trajectory.points.back().time_from_start.sec;
-            distance = shelf_vel * t;
-        } while (distance > 0.05);
+            RCLCPP_INFO(this->get_logger(), "規劃錯誤");
+        }
+
+        double plan_time = arm_plan.planning_time;
+
+        size_t point_count = arm_plan.trajectory.joint_trajectory.points.size();
+        double move_time;
+        if (point_count > 0)
+        {
+            // 2. 取得最後一個軌跡點
+            auto last_point = arm_plan.trajectory.joint_trajectory.points.back();
+
+            // 3. 轉為秒數 (包含秒與奈秒)
+            move_time = last_point.time_from_start.sec + last_point.time_from_start.nanosec * 1e-9;
+
+            RCLCPP_INFO(this->get_logger(), "手臂預估運動時間：%f 秒", move_time);
+        }
+        else
+        {
+            move_time = 0;
+        }
+
+        RCLCPP_INFO(this->get_logger(), "規劃時間：%f", move_time);
+
+        const double position_offset = 1.0; // 要往後一秒鐘避免撞機
+        double t = plan_time * 2 + move_time + abs(cli_used_time) + position_offset;
+        RCLCPP_INFO(this->get_logger(), "總時間：%f", t);
+        double shelf_move_distance = this->shelf_vel * t; // 單位公尺
+
+        
+        target_pose.position.y = shelf_move_distance;
+
+        RCLCPP_INFO(this->get_logger(), "手臂目標座標 X：%f", target_pose.position.x);
+        RCLCPP_INFO(this->get_logger(), "手臂目標座標 Y：%f", target_pose.position.y);
+        RCLCPP_INFO(this->get_logger(), "手臂目標座標 Z：%f", target_pose.position.z);
+
+        this->move_group_->setPoseTarget(target_pose);
+        succes = (this->move_group_->plan(arm_plan) == moveit::core::MoveItErrorCode::SUCCESS);
+
+        if (!succes)
+        {
+            RCLCPP_INFO(this->get_logger(), "2次規劃錯誤");
+        }
     }
     RCLCPP_INFO(this->get_logger(), "手臂規劃成功，開始執行...");
     // 注意：execute 是阻塞型函式，會一直等到手臂走到定位

@@ -80,7 +80,7 @@ class ShelfPoseDetector(Node):
         # ========================
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
-        self.tf_timer = self.create_timer(0.5, self.tf_callback)
+        # self.tf_timer = self.create_timer(0.5, self.tf_callback)
         self.depth_camera_to_base_rot = None
         self.x = 0.0
         self.y = 0.0
@@ -126,12 +126,12 @@ class ShelfPoseDetector(Node):
     # =========================
     def depth_camera_callback(self, msg): 
         self.detect_view_pose()       
+        self.depth_image = self.depth_bridge.imgmsg_to_cv2(
+            msg,
+            desired_encoding='passthrough'
+        )
         if self.yolo_detect_shelf_results is None or not self.k_received or self.start_detect_shelf_pose is not True:
-            self.depth_image = self.depth_bridge.imgmsg_to_cv2(
-                msg,
-                desired_encoding='passthrough'
-            )
-            depth_display = cv2.normalize(
+            """ depth_display = cv2.normalize(
                 self.depth_image,
                 None,
                 0,
@@ -139,13 +139,172 @@ class ShelfPoseDetector(Node):
                 cv2.NORM_MINMAX
             )
             cv2.imshow("depth", depth_display.astype(np.uint8))
-            cv2.waitKey(1)
+            cv2.waitKey(1) """
             return
 
-        self.depth_image = self.depth_bridge.imgmsg_to_cv2(
-            msg,
-            desired_encoding='passthrough'
+        self.detect_shelf_pose()
+        self.detect_shelf_vel()
+
+        # display
+        """ depth_display = cv2.normalize(
+            self.depth_image,
+            None,
+            0,
+            255,
+            cv2.NORM_MINMAX
         )
+
+        cv2.imshow("depth", depth_display.astype(np.uint8))
+        cv2.waitKey(1) """
+        
+    def depth_info_timer_callback(self, msg):
+        # 這裡可以解析深度相機的內部參數，例如焦距、主點等
+        # 這些參數對於將像素座標轉換為實際世界座標非常重要
+        self.k = msg.k
+        if not self.k_received or self.k is None:
+            self.cx = self.k[2]
+            self.cy = self.k[5]
+            self.fx = self.k[0]
+            self.fy = self.k[4]
+            self.k_received = True
+            # self.get_logger().info(f'Depth camera info received: {self.k}')
+    
+    # =========================
+    # YOLO callback
+    # =========================
+    def camera_callback(self, msg):
+        
+        if self.depth_image is None or not self.k_received:
+            self.get_logger().warning("等待深度圖像或相機內參，跳過此幀...")
+            return
+
+        frame = self.camera_bridge.imgmsg_to_cv2(msg, 'bgr8')
+
+        # yolo_detect_shelf_results = self.model(frame, verbose=False)
+        self.yolo_detect_shelf_results = self.model.predict(frame, conf=0.80, verbose=False)
+                
+        # ✔ FIX 4: 正確判斷 detection
+        if len(self.yolo_detect_shelf_results[0].boxes) == 0:
+            self.yolo_detect_shelf_results = None
+            # cv2.imshow("camera", frame)
+            # cv2.waitKey(1)
+            return
+
+        for r in self.yolo_detect_shelf_results:
+            if len(r.boxes) == 0:
+                continue
+            boxes_data = r.boxes.data.cpu().numpy()
+
+            # 運用 NumPy 的切片（Slicing）一次拿完所有欄位
+            xyxys = boxes_data[0, :4]     # 所有的座標 (N, 4)
+            confs = boxes_data[0, 4]      # 所有的信心度 (N,)
+            clss  = boxes_data[0, 5].astype(int)  # 所有的類別 ID (N,)
+            
+            while self.depth_image is None:
+                self.get_logger().warning("等待深度圖像...")
+                rclpy.spin_once(self, timeout_sec=0.05)
+            
+            h, w = self.depth_image.shape[:2]
+            y_max_idx = max(0, min(int(boxes_data[0][3]), h - 1))
+            x_max_idx = max(0, min(int(boxes_data[0][2]), w - 1))
+            x_min_idx = max(0, min(int(boxes_data[0][0]), w - 1))
+            
+            xmax_z = self.depth_image[y_max_idx, x_max_idx] 
+            xmin_z = self.depth_image[y_max_idx, x_min_idx]
+            real_max_width = boxes_data[0][2] * xmax_z / self.fx
+            real_min_width = boxes_data[0][0] * xmin_z / self.fx
+            real_width = real_max_width - real_min_width
+            
+            if real_width < 0.111:  # 如果實際寬度小於 11.1 公分，可能是誤檢，跳過
+                # self.get_logger().warning(f"檢測到的物體寬度過小 (real_width={real_width:.3f} m)，可能是誤檢，已跳過")
+                continue
+
+            self.bbox = [int(boxes_data[0][0]), int(boxes_data[0][1]), int(boxes_data[0][2]), int(boxes_data[0][3])]
+            # self.get_logger().info(f'xmin: {self.bbox[0]}, ymin: {self.bbox[1]}, xmax: {self.bbox[2]}, ymax: {self.bbox[3]}')
+                
+        annotated = self.yolo_detect_shelf_results[0].plot()
+        # cv2.imshow("camera", annotated)
+        # cv2.waitKey(1)
+
+    """ def tf_callback(self):
+        if self.yolo_detect_shelf_results is None or self.start_detect_shelf_pose is not True:
+            return
+        try:
+            # 取得從 depth_camera 到 base_link 的轉換
+            transform = self.tf_buffer.lookup_transform('base_link', 'depth_camera', rclpy.time.Time())
+            self.depth_camera_to_base_rot = transform.transform.rotation
+            # self.get_logger().info(f'Transform: {transform}')
+        except TransformException as e:
+            self.get_logger().error(f'Could not get transform: {e}')
+            return
+        
+        if self.k_received is not True:
+            return
+        self.goal_shelf_pose_msg = do_transform_pose(self.shelf_pose_msg.pose, transform)
+        
+        self.get_logger().info(f"Shelf Pose in base_link frame: {self.goal_shelf_pose_msg}\n")
+        
+        # 在更新完 goal_shelf_pose_msg 後，非阻塞地檢查是否到達計算速度的條件
+        if self.if_detected_shelf_vel is False and self.start_detect_shelf_pose is True:
+            self.detect_shelf_vel() """
+        
+    def detect_view_pose(self):
+        if self.yolo_detect_shelf_results is None:
+            return False
+        
+        view_shelf_transform = self.tf_buffer.lookup_transform(
+            'base_link',
+            'gripper_tcp',
+            rclpy.time.Time()
+        )
+        
+        current_pose = Pose()
+        current_pose.position.x = round(view_shelf_transform.transform.translation.x, 3)
+        current_pose.position.y = round(view_shelf_transform.transform.translation.y, 3)
+        current_pose.position.z = round(view_shelf_transform.transform.translation.z, 3)
+        
+        if current_pose.position.x == self.view_shelf_coord.position.x and \
+           current_pose.position.y == self.view_shelf_coord.position.y and \
+           current_pose.position.z == self.view_shelf_coord.position.z:
+            # self.get_logger().info("已達到觀看架子的位置，可以開始偵測架子座標了！")
+            self.start_detect_shelf_pose = True
+            return True
+        else:
+            # self.get_logger().info("尚未達到觀看架子的位置。")
+            self.start_detect_shelf_pose = False
+            return False
+  
+    def detect_shelf_vel(self):
+        # 使用狀態機的方式，非阻塞地計算速度
+        if not self.vel_measuring:
+            # 第一次進入，記錄初始時間與位置
+            self.vel_init_y = self.goal_shelf_pose_msg.position.y
+            self.vel_start_time = self.get_clock().now().nanoseconds / 1e9
+            self.vel_measuring = True
+            # self.get_logger().info(f'架子座標： {self.goal_shelf_pose_msg}')
+            self.get_logger().info(f"開始測量貨架速度，初始位置: {self.vel_init_y:.3f}")
+        else:
+            now = self.get_clock().now().nanoseconds / 1e9
+            dt = now - self.vel_start_time
+
+            if dt >= 1.0:
+                current_y = self.goal_shelf_pose_msg.position.y
+                d_current_y = current_y - self.vel_init_y
+                
+                self.shelf_vel = d_current_y / dt
+                self.get_logger().info(f'架子速度：{self.shelf_vel}')
+            
+            
+            """ if current_y >= self.vel_init_y + 0.04:
+                now = self.get_clock().now().nanoseconds / 1e9
+                dt = now - self.vel_start_time
+                if dt > 0:
+                    self.shelf_vel = (current_y - self.vel_init_y) / dt
+                self.if_detected_shelf_vel = True
+                self.vel_measuring = False
+                self.get_logger().info(f"測量完成！貨架速度為: {self.shelf_vel:.3f} m/s") """
+    
+    def detect_shelf_pose(self):
         # 在取 ROI 前先做
         depth_filtered = cv2.bilateralFilter(self.depth_image.astype(np.float32), 5, 10, 25)
         # 或使用 Temporal filter (多幀平均)
@@ -290,94 +449,6 @@ class ShelfPoseDetector(Node):
         # self.get_logger().info(f"Shelf Pose in depth_camera frame: {self.shelf_pose_msg}\n")
         self.get_logger().info(f"Publishing shelf pose to MoveIt: {self.goal_shelf_pose_msg}\n")
         
-        # 判斷是否要做判斷 (已移至 tf_callback 中處理以避免阻塞)
-        # if self.if_detected_shelf_vel is False:
-        #     self.detect_shelf_vel()
-
-        # display
-        depth_display = cv2.normalize(
-            self.depth_image,
-            None,
-            0,
-            255,
-            cv2.NORM_MINMAX
-        )
-
-        cv2.imshow("depth", depth_display.astype(np.uint8))
-        cv2.waitKey(1)
-        
-    def depth_info_timer_callback(self, msg):
-        # 這裡可以解析深度相機的內部參數，例如焦距、主點等
-        # 這些參數對於將像素座標轉換為實際世界座標非常重要
-        self.k = msg.k
-        if not self.k_received or self.k is None:
-            self.cx = self.k[2]
-            self.cy = self.k[5]
-            self.fx = self.k[0]
-            self.fy = self.k[4]
-            self.k_received = True
-            # self.get_logger().info(f'Depth camera info received: {self.k}')
-    
-    # =========================
-    # YOLO callback
-    # =========================
-    def camera_callback(self, msg):
-        
-        if self.depth_image is None or not self.k_received:
-            self.get_logger().warning("等待深度圖像或相機內參，跳過此幀...")
-            return
-
-        frame = self.camera_bridge.imgmsg_to_cv2(msg, 'bgr8')
-
-        # yolo_detect_shelf_results = self.model(frame, verbose=False)
-        self.yolo_detect_shelf_results = self.model.predict(frame, conf=0.80, verbose=False)
-                
-        # ✔ FIX 4: 正確判斷 detection
-        if len(self.yolo_detect_shelf_results[0].boxes) == 0:
-            self.yolo_detect_shelf_results = None
-            cv2.imshow("camera", frame)
-            cv2.waitKey(1)
-            return
-
-        for r in self.yolo_detect_shelf_results:
-            if len(r.boxes) == 0:
-                continue
-            boxes_data = r.boxes.data.cpu().numpy()
-
-            # 運用 NumPy 的切片（Slicing）一次拿完所有欄位
-            xyxys = boxes_data[0, :4]     # 所有的座標 (N, 4)
-            confs = boxes_data[0, 4]      # 所有的信心度 (N,)
-            clss  = boxes_data[0, 5].astype(int)  # 所有的類別 ID (N,)
-            
-            while self.depth_image is None:
-                self.get_logger().warning("等待深度圖像...")
-                rclpy.spin_once(self, timeout_sec=0.05)
-            
-            h, w = self.depth_image.shape[:2]
-            y_max_idx = max(0, min(int(boxes_data[0][3]), h - 1))
-            x_max_idx = max(0, min(int(boxes_data[0][2]), w - 1))
-            x_min_idx = max(0, min(int(boxes_data[0][0]), w - 1))
-            
-            xmax_z = self.depth_image[y_max_idx, x_max_idx] 
-            xmin_z = self.depth_image[y_max_idx, x_min_idx]
-            real_max_width = boxes_data[0][2] * xmax_z / self.fx
-            real_min_width = boxes_data[0][0] * xmin_z / self.fx
-            real_width = real_max_width - real_min_width
-            
-            if real_width < 0.111:  # 如果實際寬度小於 11.1 公分，可能是誤檢，跳過
-                # self.get_logger().warning(f"檢測到的物體寬度過小 (real_width={real_width:.3f} m)，可能是誤檢，已跳過")
-                continue
-
-            self.bbox = [int(boxes_data[0][0]), int(boxes_data[0][1]), int(boxes_data[0][2]), int(boxes_data[0][3])]
-            # self.get_logger().info(f'xmin: {self.bbox[0]}, ymin: {self.bbox[1]}, xmax: {self.bbox[2]}, ymax: {self.bbox[3]}')
-                
-        annotated = self.yolo_detect_shelf_results[0].plot()
-        cv2.imshow("camera", annotated)
-        cv2.waitKey(1)
-
-    def tf_callback(self):
-        if self.yolo_detect_shelf_results is None or self.start_detect_shelf_pose is not True:
-            return
         try:
             # 取得從 depth_camera 到 base_link 的轉換
             transform = self.tf_buffer.lookup_transform('base_link', 'depth_camera', rclpy.time.Time())
@@ -390,40 +461,7 @@ class ShelfPoseDetector(Node):
         if self.k_received is not True:
             return
         self.goal_shelf_pose_msg = do_transform_pose(self.shelf_pose_msg.pose, transform)
-        
-        self.get_logger().info(f"Shelf Pose in base_link frame: {self.goal_shelf_pose_msg}\n")
-        
-        # 在更新完 goal_shelf_pose_msg 後，非阻塞地檢查是否到達計算速度的條件
-        if self.if_detected_shelf_vel is False and self.start_detect_shelf_pose is True:
-            self.detect_shelf_vel()
-        
-    def detect_view_pose(self):
-        if self.yolo_detect_shelf_results is None:
-            return False
-        
-        view_shelf_transform = self.tf_buffer.lookup_transform(
-            'base_link',
-            'gripper_tcp',
-            rclpy.time.Time()
-        )
-        
-        current_pose = Pose()
-        current_pose.position.x = round(view_shelf_transform.transform.translation.x, 3)
-        current_pose.position.y = round(view_shelf_transform.transform.translation.y, 3)
-        current_pose.position.z = round(view_shelf_transform.transform.translation.z, 3)
-        
-        if current_pose.position.x == self.view_shelf_coord.position.x and \
-           current_pose.position.y == self.view_shelf_coord.position.y and \
-           current_pose.position.z == self.view_shelf_coord.position.z:
-            self.get_logger().info("已達到觀看架子的位置，可以開始偵測架子座標了！")
-            self.start_detect_shelf_pose = True
-            return True
-        else:
-            self.get_logger().info("尚未達到觀看架子的位置。")
-            self.start_detect_shelf_pose = False
-            return False
-        
-    
+
     def view_shelf_coordinate_callback(self, request, response):
         request.result = "get_view_shelf_coord"
         
@@ -447,45 +485,22 @@ class ShelfPoseDetector(Node):
             self.get_logger().warning("Invalid request command.")
             pass
 
+        self.detect_shelf_pose()
+        start_time = self.get_clock().now().to_msg()
+        
         self.goal_shelf_pose_msg.orientation.x = 0.704
         self.goal_shelf_pose_msg.orientation.y = 0.704
         self.goal_shelf_pose_msg.orientation.z = 0.062
         self.goal_shelf_pose_msg.orientation.w = 0.062
-        
-        
-        
+                    
+        response.start_pos_time = start_time
         response.shelf_pose = self.goal_shelf_pose_msg
         response.status_message = "success"
-        response.shelf_vel = 0.0
-        # response.shelf_vel = self.shelf_vel
+        # response.shelf_vel = 0.0
+        response.shelf_vel = self.shelf_vel
 
         # self.get_logger().info(f"Publishing shelf pose to MoveIt: {self.goal_shelf_pose_msg}\n")
         return response
-    
-    def detect_shelf_vel(self):
-        # 使用狀態機的方式，非阻塞地計算速度
-        if not self.vel_measuring:
-            # 第一次進入，記錄初始時間與位置
-            self.vel_init_y = self.goal_shelf_pose_msg.position.y
-            self.vel_start_time = self.get_clock().now().nanoseconds / 1e9
-            self.vel_measuring = True
-            # self.get_logger().info(f'架子座標： {self.goal_shelf_pose_msg}')
-            self.get_logger().info(f"開始測量貨架速度，初始位置: {self.vel_init_y:.3f}")
-        elif (self.get_clock().now().nanoseconds / 1e9) - self.vel_start_time >= 1: #1S
-            self.shelf_vel = 0.0
-            self.if_detected_shelf_vel = True
-        else:
-            # 每次進來檢查是否移動超過 0.04
-            current_y = self.goal_shelf_pose_msg.position.y
-            if current_y >= self.vel_init_y + 0.04:
-                now = self.get_clock().now().nanoseconds / 1e9
-                dt = now - self.vel_start_time
-                if dt > 0:
-                    self.shelf_vel = (current_y - self.vel_init_y) / dt
-                self.if_detected_shelf_vel = True
-                self.vel_measuring = False
-                self.get_logger().info(f"測量完成！貨架速度為: {self.shelf_vel:.3f} m/s")
-
         
 
         

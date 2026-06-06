@@ -72,7 +72,7 @@
       <static>false</static> 
       <!-- <pose>0.75 0.0 0.18 1.5708 0 -1.5708</pose>  -->
       <!-- <pose>0.75 0.0 0.085 0 0 0</pose>  這個0.85是架子的模型剛好處碰到地面-->
-      <pose>0.45 0.0 0.085 0 0 0</pose> 
+      <pose>0.45 0.08 0.085 0 0 0</pose> 
       <link name="wheel_holder_link">
         
 

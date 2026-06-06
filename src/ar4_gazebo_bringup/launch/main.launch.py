@@ -94,7 +94,7 @@ def generate_launch_description():
         [
             use_sim_time_param,
             move_group_include,
-            rviz_include,
+            # rviz_include,
             gz_sim_include,
         ]
     )
