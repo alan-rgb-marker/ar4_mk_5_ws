@@ -92,7 +92,7 @@ void arm_to_shelf_control::run()
 
     // ---------------- 第一步執行到看架子的點------------------
 
-    std::this_thread::sleep_for(3s); // 等待一秒確保 python端可以偵測到shelf pose 已經完成動作
+    std::this_thread::sleep_for(4s); // 等待一秒確保 python端可以偵測到shelf pose 已經完成動作
 
     move_to_shelf_pose();
     auto reset_pub = this->create_publisher<std_msgs::msg::Bool>("update_robot_state", rclcpp::SystemDefaultsQoS());
@@ -271,7 +271,7 @@ bool arm_to_shelf_control::arm_planner(geometry_msgs::msg::Pose &target_pose, st
 
         RCLCPP_INFO(this->get_logger(), "規劃時間：%f", move_time);
 
-        const double position_offset = 1.0; // 要往後一秒鐘避免撞機
+        const double position_offset = 0.5; // 要往後一秒鐘避免撞機
         double t = plan_time * 2 + move_time + abs(cli_used_time) + position_offset;
         RCLCPP_INFO(this->get_logger(), "總時間：%f", t);
         double shelf_move_distance = this->shelf_vel * t; // 單位公尺

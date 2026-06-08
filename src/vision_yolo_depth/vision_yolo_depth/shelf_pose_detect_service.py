@@ -29,6 +29,7 @@ class ShelfPoseDetector(Node):
             self.depth_camera_callback,
             10
         )
+        self.delay_start_detect_shelf_vel = 0
 
         self.depth_bridge = CvBridge()
         self.depth_image = None
@@ -126,11 +127,12 @@ class ShelfPoseDetector(Node):
     # Depth callback
     # =========================
     def depth_camera_callback(self, msg): 
-        self.detect_view_pose()       
         self.depth_image = self.depth_bridge.imgmsg_to_cv2(
             msg,
             desired_encoding='passthrough'
         )
+        
+        self.detect_view_pose()       
         if self.yolo_detect_shelf_results is None or not self.k_received or self.start_detect_shelf_pose is not True:
             """ depth_display = cv2.normalize(
                 self.depth_image,
@@ -144,8 +146,9 @@ class ShelfPoseDetector(Node):
             return
 
         self.detect_shelf_pose()
-        self.detect_shelf_vel()
-
+        if self.delay_start_detect_shelf_vel > 2:
+            self.detect_shelf_vel()
+        self.delay_start_detect_shelf_vel += 1
         # display
         """ depth_display = cv2.normalize(
             self.depth_image,
@@ -238,13 +241,13 @@ class ShelfPoseDetector(Node):
         )
         
         current_pose = Pose()
-        current_pose.position.x = round(view_shelf_transform.transform.translation.x, 3)
-        current_pose.position.y = round(view_shelf_transform.transform.translation.y, 3)
-        current_pose.position.z = round(view_shelf_transform.transform.translation.z, 3)
+        current_pose.position.x = round(view_shelf_transform.transform.translation.x, 4)
+        current_pose.position.y = round(view_shelf_transform.transform.translation.y, 4)
+        current_pose.position.z = round(view_shelf_transform.transform.translation.z, 4)
         
-        if current_pose.position.x == self.view_shelf_coord.position.x and \
-           current_pose.position.y == self.view_shelf_coord.position.y and \
-           current_pose.position.z == self.view_shelf_coord.position.z:
+        if abs(current_pose.position.x - self.view_shelf_coord.position.x) < 0.001 and \
+           abs(current_pose.position.y - self.view_shelf_coord.position.y) < 0.001 and \
+           abs(current_pose.position.z - self.view_shelf_coord.position.z) < 0.001:
             # self.get_logger().info("已達到觀看架子的位置，可以開始偵測架子座標了！")
             self.start_detect_shelf_pose = True
             return True
@@ -276,7 +279,7 @@ class ShelfPoseDetector(Node):
     
     def detect_shelf_pose(self):
         # 在取 ROI 前先做
-        depth_filtered = cv2.bilateralFilter(self.depth_image.astype(np.float32), 5, 10, 25)
+        depth_filtered = cv2.bilateralFilter(self.depth_image.astype(np.float32), 7, 0, 25)
         # 或使用 Temporal filter (多幀平均)
         
         if self.bbox is None or self.yolo_detect_shelf_results is None or self.k_received is not True:
