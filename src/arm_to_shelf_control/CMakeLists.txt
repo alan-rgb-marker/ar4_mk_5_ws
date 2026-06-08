@@ -48,11 +48,26 @@ ament_target_dependencies(demo_shelf_moveit_node
   geometry_msgs
 )
 
+add_executable(moveit_servo_service_node src/moveit_servo_service.cpp)
+target_include_directories(moveit_servo_service_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+ament_target_dependencies(moveit_servo_service_node
+  rclcpp
+  moveit_servo
+  geometry_msgs
+)
+
 install(TARGETS arm_to_shelf_control_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
 install(TARGETS demo_shelf_moveit_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(TARGETS moveit_servo_service_node
   DESTINATION lib/${PROJECT_NAME}
 )
 

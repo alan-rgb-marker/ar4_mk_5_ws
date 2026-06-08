@@ -29,7 +29,7 @@ def generate_launch_description():
     # As opposed to a node component, this may be necessary (for example) if Servo is running on a different PC
     servo_node = launch_ros.actions.Node(
         package="arm_to_shelf_control",
-        executable="arm_to_shelf_control_node",
+        executable="moveit_servo_service_node",
         parameters=[
             servo_params,
             # acceleration_filter_update_period,

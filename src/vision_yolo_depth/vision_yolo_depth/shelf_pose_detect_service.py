@@ -27,7 +27,7 @@ class ShelfPoseDetector(Node):
             Image,
             '/depth_camera/depth_image',
             self.depth_camera_callback,
-            5
+            10
         )
 
         self.depth_bridge = CvBridge()
@@ -105,6 +105,7 @@ class ShelfPoseDetector(Node):
         self.shelf_pose_service_ = self.create_service(ShelfCoodinate, 'shelf_coord', self.shelf_pose_callback)
         self.goal_shelf_pose_msg = Pose()
         self.shelf_vel = 0.0
+        self.shelf_vel_is_detected = False
 
         # ========================
         # 啟動手臂node client
@@ -287,22 +288,13 @@ class ShelfPoseDetector(Node):
             now = self.get_clock().now().nanoseconds / 1e9
             dt = now - self.vel_start_time
 
-            if dt >= 1.0:
+            if dt >= 1.0 and self.shelf_vel_is_detected is not True:
                 current_y = self.goal_shelf_pose_msg.position.y
                 d_current_y = current_y - self.vel_init_y
                 
                 self.shelf_vel = d_current_y / dt
-                self.get_logger().info(f'架子速度：{self.shelf_vel}')
-            
-            
-            """ if current_y >= self.vel_init_y + 0.04:
-                now = self.get_clock().now().nanoseconds / 1e9
-                dt = now - self.vel_start_time
-                if dt > 0:
-                    self.shelf_vel = (current_y - self.vel_init_y) / dt
-                self.if_detected_shelf_vel = True
-                self.vel_measuring = False
-                self.get_logger().info(f"測量完成！貨架速度為: {self.shelf_vel:.3f} m/s") """
+                self.get_logger().info(f'架子速度：{self.shelf_vel} m/s')
+                self.shelf_vel_is_detected = True
     
     def detect_shelf_pose(self):
         # 在取 ROI 前先做

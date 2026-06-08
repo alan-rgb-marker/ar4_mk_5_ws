@@ -29,9 +29,9 @@ joint_command_in_topic: "~/delta_joint_cmds"
 command_in_type: "speed_units"   # unitless 代表接受 [-1.0 到 1.0] 的搖桿訊號
 
 scale:
-  linear: 1.0                 # 線速度縮放比例
-  rotational: 1.0             # 角速度縮放比例
-  joint: 1.0                  # 關節 Jog 縮放比例
+  linear: 0.1                 # 線速度縮放比例
+  rotational: 0.2             # 角速度縮放比例
+  joint: 0.5                  # 關節 Jog 縮放比例
   
 incoming_command_timeout: 0.1
 
@@ -69,7 +69,7 @@ is_primary_planning_scene_monitor: true
 # ==========================================
 # SMOOTHING PLUGIN (平滑濾波器)
 # ==========================================
-use_smoothing: false
+use_smoothing: true
 smoothing_filter_plugin_name: "online_signal_smoothing::ButterworthFilterPlugin"
 
 # ==========================================
@@ -83,15 +83,15 @@ collision_check_rate: 10.0
 # ==========================================
 # SINGULARITY CHECKING (奇異點檢查)
 # ==========================================
-lower_singularity_threshold: 40.0
-hard_stop_singularity_threshold: 50.0
+lower_singularity_threshold: 17.0
+hard_stop_singularity_threshold: 30.0
 leaving_singularity_threshold_multiplier: 2.0
-singularity_step_scale: 1.0 # 0.01
+singularity_step_scale: 0.01
 
 # ==========================================
 # JOINT LIMITING (關節極限保護)
 # ==========================================
 halt_all_joints_in_joint_mode: true
 halt_all_joints_in_cartesian_mode: true
-joint_limit_margins: [0.02]
-override_velocity_scaling_factor: 1.0
+joint_limit_margins: [0.1]
+override_velocity_scaling_factor: 0.0

@@ -9,6 +9,7 @@
 #include <vision_interfaces/srv/armcoodinate.hpp>
 #include <vision_interfaces/srv/shelf_coodinate.hpp>
 #include <vision_interfaces/srv/twist_moveit_servo.hpp>
+#include <std_msgs/msg/bool.hpp>
 
 #include <thread>
 #include <memory>
@@ -33,9 +34,12 @@ private:
     std::unique_ptr<moveit::planning_interface::MoveGroupInterface> move_group_;
     std::unique_ptr<moveit::planning_interface::MoveGroupInterface> gripper_group_;
 
-    rclcpp::Duration shelf_feature_time;
-    float shelf_vel;
+    rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr moveit_servo_publisher_;
 
+    rclcpp::Duration elapsed_time;
+    rclcpp::Time shelf_feature_time;
+    double shelf_vel;
+    
 public:
     arm_to_shelf_control();
 
@@ -55,9 +59,10 @@ public:
 
     bool gripper_planner(std::string target = "close");
 
-    bool moveit_servo_twist_client(const geometry_msgs::msg::TwistStamped &twist_req, std::string status = "docking");
+    bool moveit_servo_move(geometry_msgs::msg::TwistStamped &twist_pub, geometry_msgs::msg::PoseStamped &init_pose, double offset = 0.0); // offset 是為了往下幾毫米
+    // bool moveit_servo_twist_client(const geometry_msgs::msg::TwistStamped &twist_req, std::string status = "docking");
 
-    bool moveit_servo_move(geometry_msgs::msg::TwistStamped &twist_cmd);
+    // bool moveit_servo_move(geometry_msgs::msg::TwistStamped &twist_cmd);
 };
 
 int main(int argc, char **argv)
@@ -75,13 +80,15 @@ int main(int argc, char **argv)
 }
 
 arm_to_shelf_control::arm_to_shelf_control()
-    : Node("move_to_shelf"), shelf_feature_time(0,0)
+    : Node("move_to_shelf"), elapsed_time(0, 0)
 {
-    view_shelf_coord_client_ = this->create_client<vision_interfaces::srv::Armcoodinate>("view_shelf_coord");
-    shelf_coord_client_ = this->create_client<vision_interfaces::srv::ShelfCoodinate>("shelf_coord");
-    servo_twist_client_ = this->create_client<vision_interfaces::srv::TwistMoveitServo>("servo_twist");
-    trigger_run_service_ = this->create_service<std_srvs::srv::Trigger>("run_service", std::bind(&arm_to_shelf_control::run_callback, this, std::placeholders::_1, std::placeholders::_2));
-    // shelf_feature_time = rclcpp::Duration(0, 0);
+    this->view_shelf_coord_client_ = this->create_client<vision_interfaces::srv::Armcoodinate>("view_shelf_coord");
+    this->shelf_coord_client_ = this->create_client<vision_interfaces::srv::ShelfCoodinate>("shelf_coord");
+    this->servo_twist_client_ = this->create_client<vision_interfaces::srv::TwistMoveitServo>("servo_twist");
+    this->trigger_run_service_ = this->create_service<std_srvs::srv::Trigger>("run_service", std::bind(&arm_to_shelf_control::run_callback, this, std::placeholders::_1, std::placeholders::_2));
+    this->moveit_servo_publisher_ = this->create_publisher<geometry_msgs::msg::TwistStamped>("delta_twist_cmds", 10);
+
+    // elapsed_time = rclcpp::Duration(0, 0);
 }
 
 arm_to_shelf_control::~arm_to_shelf_control()
@@ -90,38 +97,53 @@ arm_to_shelf_control::~arm_to_shelf_control()
 
 void arm_to_shelf_control::run()
 {
+    const double place_distance = 0.004;    // 單位mm 放置距離4mm
+    const double place_vel = 0.01;          // 速度 每秒1cm
+
+    gripper_planner("open");
     move_to_view_shelf_pose();
 
     // ---------------- 第一步執行到看架子的點------------------
 
-    std::this_thread::sleep_for(7s); // 等待一秒確保 python端可以偵測到shelf pose 已經完成動作
+    std::this_thread::sleep_for(5s); // 等待一秒確保 python端可以偵測到shelf pose 已經完成動作
 
     move_to_shelf_pose();
+    auto reset_pub = this->create_publisher<std_msgs::msg::Bool>("update_robot_state", rclcpp::SystemDefaultsQoS());
+    std_msgs::msg::Bool reset_msg;
+    reset_msg.data = true;
+    reset_pub->publish(reset_msg);
 
     // ---------------- 第二步執行到架子未來位置------------------
-    // rclcpp::Time now = this->now();
-    // while (now < shelf_feature_time)
-    // {
-    //     now = this->now();
-    // }
+    rclcpp::Time now = this->now();
+    bool suc = false;
+    while (now < this->shelf_feature_time)
+    {
+        now = this->now();
+        if (!suc)
+            this->move_group_->setStartStateToCurrentState();
+    }
+    RCLCPP_INFO(this->get_logger(), "時間到架子與手臂可以平行執行");
 
+    
     // 接下來去twist
-    std::string status = "docking";
     geometry_msgs::msg::TwistStamped twist_req;
     twist_req.header.frame_id = "base_link";
-    twist_req.twist.linear.x = abs(0.03 * sin(10 * M_PI / 180));      // 沿 X 軸
+    twist_req.twist.linear.x = abs(place_vel * sin(10 * M_PI / 180));      // 沿 X 軸
     twist_req.twist.linear.y = shelf_vel;                             // 沿 Y 軸
-    twist_req.twist.linear.z = -1 * abs(0.03 * cos(10 * M_PI / 180)); // 沿 Z 軸
+    twist_req.twist.linear.z = -1 * abs(place_vel * cos(10 * M_PI / 180)); // 沿 Z 軸
     twist_req.twist.angular.x = 0.0;                                  // 沿 X 軸
     twist_req.twist.angular.y = 0.0;                                  // 沿 Y 軸
     twist_req.twist.angular.z = 0.0;                                  // 沿 Z 軸
-    bool success = moveit_servo_twist_client(twist_req, status);
+
+    geometry_msgs::msg::PoseStamped init_pose = this->move_group_->getCurrentPose("gripper_tcp");
+    bool success = moveit_servo_move(twist_req, init_pose, place_distance);
+    // bool success = moveit_servo_twist_client(twist_req, status);
     // ------------------------ 第三步執行 MoveIt Servo 控制手臂跟隨貨架移動 並將輪自放到柱子裡面--------------------
 
     gripper_planner("open");
     // ------------------------ 第四步夾爪打開放輪子--------------------
 
-    status = "quiting";
+    /* status = "quiting";
     twist_req = geometry_msgs::msg::TwistStamped();
     twist_req.header.frame_id = "base_link";
     twist_req.twist.linear.x = -1 * abs(0.3 * sin(10 * M_PI / 180)); // 沿 X 軸
@@ -133,7 +155,7 @@ void arm_to_shelf_control::run()
     success = moveit_servo_twist_client(twist_req, status);
     // ------------------------ 第五步執行 MoveIt Servo 控制手臂跟隨貨架移動 並將輪子從柱子裡面拉出來--------------------
     geometry_msgs::msg::Pose init_pose = geometry_msgs::msg::Pose();
-    arm_planner(init_pose); // 最後回到初始位置
+    arm_planner(init_pose); // 最後回到初始位置 */
 }
 
 void arm_to_shelf_control::run_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> request, std::shared_ptr<std_srvs::srv::Trigger::Response> response)
@@ -179,8 +201,6 @@ void arm_to_shelf_control::move_to_shelf_pose()
     auto shelf_coord_request = std::make_shared<vision_interfaces::srv::ShelfCoodinate::Request>();
     shelf_coord_request->req_cmd = "get_shelf_cood";
 
-    
-
     while (!shelf_coord_client_->wait_for_service())
     {
         if (!rclcpp::ok())
@@ -196,14 +216,15 @@ void arm_to_shelf_control::move_to_shelf_pose()
     auto response = shelf_coord_reponse.get();
 
     rclcpp::Time start_cli = response->start_pos_time;
+    this->shelf_feature_time = start_cli;
     std::string status = response->status_message;
     shelf_vel = response->shelf_vel;
 
     rclcpp::Time end_cli = this->now();
 
-    shelf_feature_time = end_cli - start_cli;
+    elapsed_time = end_cli - start_cli;
 
-    bool success = arm_planner(response->shelf_pose, "time", shelf_feature_time.seconds()); // 寫到這邊就已經讓夾爪移到架子未來位置
+    bool success = arm_planner(response->shelf_pose, "time", elapsed_time.seconds()); // 寫到這邊就已經讓夾爪移到架子未來位置
     // bool success = arm_planner(response->shelf_pose); // 寫到這邊就已經讓夾爪移到架子未來位置
 }
 
@@ -252,12 +273,12 @@ bool arm_to_shelf_control::arm_planner(geometry_msgs::msg::Pose &target_pose, st
 
         RCLCPP_INFO(this->get_logger(), "規劃時間：%f", move_time);
 
-        const double position_offset = 1.0; // 要往後一秒鐘避免撞機
+        const double position_offset = 2.5; // 要往後一秒鐘避免撞機
         double t = plan_time * 2 + move_time + abs(cli_used_time) + position_offset;
         RCLCPP_INFO(this->get_logger(), "總時間：%f", t);
         double shelf_move_distance = this->shelf_vel * t; // 單位公尺
 
-        
+        this->shelf_feature_time += rclcpp::Duration::from_seconds(t);
         target_pose.position.y = shelf_move_distance;
 
         RCLCPP_INFO(this->get_logger(), "手臂目標座標 X：%f", target_pose.position.x);
@@ -298,7 +319,36 @@ bool arm_to_shelf_control::gripper_planner(std::string target)
     }
 }
 
-bool arm_to_shelf_control::moveit_servo_twist_client(const geometry_msgs::msg::TwistStamped &twist_req, std::string status)
+bool arm_to_shelf_control::moveit_servo_move(geometry_msgs::msg::TwistStamped &twist_pub, geometry_msgs::msg::PoseStamped &init_pose, double offset)
+{
+
+    this->moveit_servo_publisher_->publish(twist_pub);
+    RCLCPP_INFO(this->get_logger(), "線x: %f", twist_pub.twist.linear.x);
+    RCLCPP_INFO(this->get_logger(), "線y: %f", twist_pub.twist.linear.y);
+    RCLCPP_INFO(this->get_logger(), "線z: %f", twist_pub.twist.linear.z);
+    double offset_x = offset * sin(10.0 / M_PIf * 180);
+    double offset_z = -offset * cos(10.0 / M_PIf * 180);
+
+    geometry_msgs::msg::PoseStamped current_pose = this->move_group_->getCurrentPose("gripper_tcp");
+
+    while (current_pose.pose.position.x < init_pose.pose.position.x + offset_x || current_pose.pose.position.z > init_pose.pose.position.z + offset_z)
+    {
+        if (current_pose.pose.position.x >= init_pose.pose.position.x + offset_x)
+        {
+            twist_pub.twist.linear.x = 0.0;
+        }
+        if (current_pose.pose.position.z <= init_pose.pose.position.z + offset_z)
+        {
+            twist_pub.twist.linear.z = 0.0;
+        }
+        this->moveit_servo_publisher_->publish(twist_pub);
+        current_pose = this->move_group_->getCurrentPose("gripper_tcp");
+    }
+
+    return true;
+}
+
+/* bool arm_to_shelf_control::moveit_servo_twist_client(const geometry_msgs::msg::TwistStamped &twist_req, std::string status)
 {
     auto twist_moveit_servo_request = std::make_shared<vision_interfaces::srv::TwistMoveitServo::Request>();
 
@@ -357,3 +407,4 @@ bool arm_to_shelf_control::moveit_servo_move(geometry_msgs::msg::TwistStamped &t
     }
     return true;
 }
+ */
