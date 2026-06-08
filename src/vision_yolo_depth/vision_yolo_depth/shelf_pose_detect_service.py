@@ -226,29 +226,7 @@ class ShelfPoseDetector(Node):
         annotated = self.yolo_detect_shelf_results[0].plot()
         # cv2.imshow("camera", annotated)
         # cv2.waitKey(1)
-
-    """ def tf_callback(self):
-        if self.yolo_detect_shelf_results is None or self.start_detect_shelf_pose is not True:
-            return
-        try:
-            # 取得從 depth_camera 到 base_link 的轉換
-            transform = self.tf_buffer.lookup_transform('base_link', 'depth_camera', rclpy.time.Time())
-            self.depth_camera_to_base_rot = transform.transform.rotation
-            # self.get_logger().info(f'Transform: {transform}')
-        except TransformException as e:
-            self.get_logger().error(f'Could not get transform: {e}')
-            return
-        
-        if self.k_received is not True:
-            return
-        self.goal_shelf_pose_msg = do_transform_pose(self.shelf_pose_msg.pose, transform)
-        
-        self.get_logger().info(f"Shelf Pose in base_link frame: {self.goal_shelf_pose_msg}\n")
-        
-        # 在更新完 goal_shelf_pose_msg 後，非阻塞地檢查是否到達計算速度的條件
-        if self.if_detected_shelf_vel is False and self.start_detect_shelf_pose is True:
-            self.detect_shelf_vel() """
-        
+    
     def detect_view_pose(self):
         if self.yolo_detect_shelf_results is None:
             return False

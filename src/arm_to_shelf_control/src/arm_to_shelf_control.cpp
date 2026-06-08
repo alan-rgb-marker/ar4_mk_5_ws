@@ -124,12 +124,10 @@ void arm_to_shelf_control::run()
 
     geometry_msgs::msg::PoseStamped init_pose = this->move_group_->getCurrentPose("gripper_tcp");
     bool success = moveit_servo_move(twist_req, init_pose, place_distance);
-    // bool success = moveit_servo_twist_client(twist_req, status);
     // ------------------------ 第三步執行 MoveIt Servo 控制手臂跟隨貨架移動 並將輪自放到柱子裡面--------------------
 
     gripper_planner("open");
     // ------------------------ 第四步夾爪打開放輪子--------------------
-    // reset_pub->publish(reset_msg);
 
     status = "quit";
     twist_req = geometry_msgs::msg::TwistStamped();
@@ -224,7 +222,7 @@ void arm_to_shelf_control::move_to_shelf_pose()
 
     elapsed_time = end_cli - start_cli;
 
-    bool success = arm_planner(response->shelf_pose, "time", elapsed_time.seconds()); // 寫到這邊就已經讓夾爪移到架子未來位置
+    bool success = arm_planner(response->shelf_pose, "feature_postion", elapsed_time.seconds()); // 寫到這邊就已經讓夾爪移到架子未來位置
     // bool success = arm_planner(response->shelf_pose); // 寫到這邊就已經讓夾爪移到架子未來位置
 }
 
@@ -242,7 +240,7 @@ bool arm_to_shelf_control::arm_planner(geometry_msgs::msg::Pose &target_pose, st
             return false;
         }
     }
-    else if (state == "time")
+    else if (state == "feature_postion")
     {
         this->move_group_->setPoseTarget(target_pose);  
         bool succes = (this->move_group_->plan(arm_plan) == moveit::core::MoveItErrorCode::SUCCESS);
@@ -273,17 +271,17 @@ bool arm_to_shelf_control::arm_planner(geometry_msgs::msg::Pose &target_pose, st
 
         RCLCPP_INFO(this->get_logger(), "規劃時間：%f", move_time);
 
-        const double position_offset = 2.5; // 要往後一秒鐘避免撞機
+        const double position_offset = 1.0; // 要往後一秒鐘避免撞機
         double t = plan_time * 2 + move_time + abs(cli_used_time) + position_offset;
         RCLCPP_INFO(this->get_logger(), "總時間：%f", t);
         double shelf_move_distance = this->shelf_vel * t; // 單位公尺
 
         this->shelf_feature_time += rclcpp::Duration::from_seconds(t);
-        target_pose.position.y = shelf_move_distance;
+        target_pose.position.y += shelf_move_distance;
 
-        RCLCPP_INFO(this->get_logger(), "手臂目標座標 X：%f", target_pose.position.x);
-        RCLCPP_INFO(this->get_logger(), "手臂目標座標 Y：%f", target_pose.position.y);
-        RCLCPP_INFO(this->get_logger(), "手臂目標座標 Z：%f", target_pose.position.z);
+        // RCLCPP_INFO(this->get_logger(), "手臂目標座標 X：%f", target_pose.position.x);
+        // RCLCPP_INFO(this->get_logger(), "手臂目標座標 Y：%f", target_pose.position.y);
+        // RCLCPP_INFO(this->get_logger(), "手臂目標座標 Z：%f", target_pose.position.z);
 
         this->move_group_->setPoseTarget(target_pose);
         succes = (this->move_group_->plan(arm_plan) == moveit::core::MoveItErrorCode::SUCCESS);
@@ -351,9 +349,9 @@ bool arm_to_shelf_control::moveit_servo_move(geometry_msgs::msg::TwistStamped &t
         {
             this->moveit_servo_publisher_->publish(twist_pub);
             current_pose = this->move_group_->getCurrentPose("gripper_tcp");
-            RCLCPP_INFO(this->get_logger(), "發布twist x: %f ", twist_pub.twist.linear.x);
-            RCLCPP_INFO(this->get_logger(), "發布twist y: %f ", twist_pub.twist.linear.y);
-            RCLCPP_INFO(this->get_logger(), "發布twist z: %f ", twist_pub.twist.linear.z);
+            // RCLCPP_INFO(this->get_logger(), "發布twist x: %f ", twist_pub.twist.linear.x);
+            // RCLCPP_INFO(this->get_logger(), "發布twist y: %f ", twist_pub.twist.linear.y);
+            // RCLCPP_INFO(this->get_logger(), "發布twist z: %f ", twist_pub.twist.linear.z);
         }
         return true;
     }
@@ -361,64 +359,3 @@ bool arm_to_shelf_control::moveit_servo_move(geometry_msgs::msg::TwistStamped &t
         return false;
     }
 }
-
-/* bool arm_to_shelf_control::moveit_servo_twist_client(const geometry_msgs::msg::TwistStamped &twist_req, std::string status)
-{
-    auto twist_moveit_servo_request = std::make_shared<vision_interfaces::srv::TwistMoveitServo::Request>();
-
-    twist_moveit_servo_request->twist_req = twist_req;
-    twist_moveit_servo_request->status = status;
-    while (!servo_twist_client_->wait_for_service(1s))
-    {
-        if (!rclcpp::ok())
-        {
-            RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting.");
-            return false;
-        }
-        RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
-    }
-
-    auto twist_moveit_servo_reponse = servo_twist_client_->async_send_request(twist_moveit_servo_request);
-
-    auto response = twist_moveit_servo_reponse.get();
-    if (response->status != "get")
-    {
-        RCLCPP_INFO(this->get_logger(), "MoveIt Servo 回應不是 get: %s", response->status.c_str());
-    }
-    else
-    {
-        RCLCPP_INFO(this->get_logger(), "MoveIt Servo 穩定，取得回應。");
-    }
-
-    return true;
-}
-
-bool arm_to_shelf_control::moveit_servo_move(geometry_msgs::msg::TwistStamped &twist_req)
-{
-    auto twist_moveit_servo_request = std::make_shared<vision_interfaces::srv::TwistMoveitServo::Request>();
-
-    twist_moveit_servo_request->twist_req = twist_req;
-    while (!servo_twist_client_->wait_for_service(1s))
-    {
-        if (!rclcpp::ok())
-        {
-            RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting.");
-            return false;
-        }
-        RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
-    }
-
-    auto twist_moveit_servo_reponse = servo_twist_client_->async_send_request(twist_moveit_servo_request);
-
-    auto response = twist_moveit_servo_reponse.get();
-    if (response->status != "get")
-    {
-        RCLCPP_INFO(this->get_logger(), "MoveIt Servo 回應不是 get: %s", response->status.c_str());
-    }
-    else
-    {
-        RCLCPP_INFO(this->get_logger(), "MoveIt Servo 穩定，取得回應。");
-    }
-    return true;
-}
- */

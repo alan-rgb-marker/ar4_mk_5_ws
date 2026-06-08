@@ -159,34 +159,10 @@ class DepthSubscriber(Node):
         if request.result == 'get_coordinates':
             pose = PoseStamped()
             pose.header.frame_id = "base_link"
-            # pose.pose.position.x = self.x
-            # pose.pose.position.y = self.y
-            # pose.pose.position.z = self.z
-            # pose.pose.position.x = 0.3
-            # pose.pose.position.y = 0.0
-            # pose.pose.position.z = 0.1562
-            # pose.pose.position.x = 0.6;
-            # pose.pose.position.y = 0.001;
-            # pose.pose.position.z = 0.2;
-            # pose.pose.position.x = 0.7067;
-            # pose.pose.position.y = 0.0018;
-            # pose.pose.position.z = 0.1379;
-            pose.pose.position.x = 0.4818;
-            pose.pose.position.y = 0.005;
-            pose.pose.position.z = 0.19312;
-            # pose.pose.position.x = 0.287;
-            # pose.pose.position.y = 0.000;
-            # pose.pose.position.z = 0.287; # 0.289;
+            pose.pose.position.x = self.x
+            pose.pose.position.y = self.y
+            pose.pose.position.z = self.z
 
-
-            # pose.pose.orientation.x = 0.707
-            # pose.pose.orientation.y = 0.707
-            # pose.pose.orientation.z = 0.0
-            # pose.pose.orientation.w = 0.0
-            # pose.pose.orientation.x = 0.612
-            # pose.pose.orientation.y = 0.612
-            # pose.pose.orientation.z = 0.354
-            # pose.pose.orientation.w = 0.354
             pose.pose.orientation.x = 0.704
             pose.pose.orientation.y = 0.704
             pose.pose.orientation.z = 0.062
