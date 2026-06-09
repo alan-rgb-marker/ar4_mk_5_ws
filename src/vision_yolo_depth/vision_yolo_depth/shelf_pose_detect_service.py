@@ -185,48 +185,49 @@ class ShelfPoseDetector(Node):
         frame = self.camera_bridge.imgmsg_to_cv2(msg, 'bgr8')
 
         # yolo_detect_shelf_results = self.model(frame, verbose=False)
-        self.yolo_detect_shelf_results = self.model.predict(frame, conf=0.80, verbose=False)
-                
-        # ✔ FIX 4: 正確判斷 detection
-        if len(self.yolo_detect_shelf_results[0].boxes) == 0:
-            self.yolo_detect_shelf_results = None
-            # cv2.imshow("camera", frame)
-            # cv2.waitKey(1)
-            return
+        self.yolo_detect_shelf_results = self.model(frame, stream=True, conf=0.80, verbose=False)
+
+        # 等待深度圖像
+        while self.depth_image is None:
+            self.get_logger().warning("等待深度圖像...")
+            rclpy.spin_once(self, timeout_sec=0.05)
+
+        h, w = self.depth_image.shape[:2]
+        self.best_box = None
+        self.best_conf = -1.0
+
+        # annotated = None
 
         for r in self.yolo_detect_shelf_results:
-            if len(r.boxes) == 0:
+            annotated = r.plot()
+            if r.boxes is None or len(r.boxes) == 0:
                 continue
             boxes_data = r.boxes.data.cpu().numpy()
 
-            # 運用 NumPy 的切片（Slicing）一次拿完所有欄位
-            xyxys = boxes_data[0, :4]     # 所有的座標 (N, 4)
-            confs = boxes_data[0, 4]      # 所有的信心度 (N,)
-            clss  = boxes_data[0, 5].astype(int)  # 所有的類別 ID (N,)
-            
-            while self.depth_image is None:
-                self.get_logger().warning("等待深度圖像...")
-                rclpy.spin_once(self, timeout_sec=0.05)
-            
-            h, w = self.depth_image.shape[:2]
-            y_max_idx = max(0, min(int(boxes_data[0][3]), h - 1))
-            x_max_idx = max(0, min(int(boxes_data[0][2]), w - 1))
-            x_min_idx = max(0, min(int(boxes_data[0][0]), w - 1))
-            
-            xmax_z = self.depth_image[y_max_idx, x_max_idx] 
-            xmin_z = self.depth_image[y_max_idx, x_min_idx]
-            real_max_width = boxes_data[0][2] * xmax_z / self.fx
-            real_min_width = boxes_data[0][0] * xmin_z / self.fx
-            real_width = real_max_width - real_min_width
-            
-            if real_width < 0.111:  # 如果實際寬度小於 11.1 公分，可能是誤檢，跳過
-                # self.get_logger().warning(f"檢測到的物體寬度過小 (real_width={real_width:.3f} m)，可能是誤檢，已跳過")
-                continue
+            for box in boxes_data:
+                x1, y1, x2, y2, conf, cls = box
 
-            self.bbox = [int(boxes_data[0][0]), int(boxes_data[0][1]), int(boxes_data[0][2]), int(boxes_data[0][3])]
-            # self.get_logger().info(f'xmin: {self.bbox[0]}, ymin: {self.bbox[1]}, xmax: {self.bbox[2]}, ymax: {self.bbox[3]}')
+                y_max_idx = max(0, min(int(y2), h - 1))
+                x_max_idx = max(0, min(int(x2), w - 1))
+                x_min_idx = max(0, min(int(x1), w - 1))
+
+                xmax_z = self.depth_image[y_max_idx, x_max_idx]
+                xmin_z = self.depth_image[y_max_idx, x_min_idx]
+
+                real_width = (x2 * xmax_z - x1 * xmin_z) / self.fx
+                if real_width < 0.111:
+                    continue
                 
-        annotated = self.yolo_detect_shelf_results[0].plot()
+                if conf > self.best_conf:
+                    self.best_conf = conf
+                    self.best_box = box
+
+        if self.best_box is None:
+            self.yolo_detect_shelf_results = None
+            return
+
+        self.bbox = [int(self.best_box[0]), int(self.best_box[1]), int(self.best_box[2]), int(self.best_box[3])]
+
         # cv2.imshow("camera", annotated)
         # cv2.waitKey(1)
     

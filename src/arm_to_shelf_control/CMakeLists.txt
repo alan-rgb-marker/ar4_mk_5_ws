@@ -59,6 +59,19 @@ ament_target_dependencies(moveit_servo_service_node
   geometry_msgs
 )
 
+add_executable(get_wheel_node src/get_wheel.cpp)
+target_include_directories(get_wheel_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+ament_target_dependencies(get_wheel_node
+  rclcpp
+  moveit_servo
+  geometry_msgs
+  vision_interfaces
+  std_srvs
+)
+
 install(TARGETS arm_to_shelf_control_node
   DESTINATION lib/${PROJECT_NAME}
 )
@@ -71,9 +84,7 @@ install(TARGETS moveit_servo_service_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
-install(PROGRAMS
-  scripts/arm_move_to_shelf_service.py
-  scripts/demo_coord_service.py
+install(TARGETS get_wheel_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
