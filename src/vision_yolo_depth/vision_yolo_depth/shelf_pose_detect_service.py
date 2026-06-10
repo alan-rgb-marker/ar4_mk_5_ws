@@ -25,7 +25,7 @@ class ShelfPoseDetector(Node):
         # =========================
         self.depth_subscript_ = self.create_subscription(
             Image,
-            '/depth_camera/depth_image',
+            '/camera/depth/image',
             self.depth_camera_callback,
             10
         )
@@ -34,7 +34,7 @@ class ShelfPoseDetector(Node):
         self.depth_bridge = CvBridge()
         self.depth_image = None
         
-        self.depth_info_subscript_ = self.create_subscription(CameraInfo, '/depth_camera/camera_info', self.depth_info_timer_callback, 5)
+        self.depth_info_subscript_ = self.create_subscription(CameraInfo, '/camera/depth/camera_info', self.depth_info_timer_callback, 5)
         self.k = None
         self.k_received = False
         self.cx = 0.0
@@ -48,7 +48,7 @@ class ShelfPoseDetector(Node):
         # =========================
         self.camera_subscript_ = self.create_subscription(
             Image,
-            '/depth_camera/image',
+            '/camera/color/image',
             self.camera_callback,
             5
         )
@@ -382,7 +382,7 @@ class ShelfPoseDetector(Node):
             0.2,               # 20cm threshold
             init_inv,
             o3d.pipelines.registration.TransformationEstimationPointToPoint(),
-            o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=50)
+            o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=30)
         )
         
         # Stage 2: Fine alignment (Point-to-Plane)
@@ -392,7 +392,7 @@ class ShelfPoseDetector(Node):
             0.05,               # 5cm threshold
             icp_coarse.transformation,
             o3d.pipelines.registration.TransformationEstimationPointToPlane(),
-            o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=50)
+            o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=30)
         )
         
         # 將轉換矩陣反轉回 CAD 到 Scan 的方向

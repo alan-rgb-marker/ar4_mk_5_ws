@@ -23,7 +23,7 @@ class DepthSubscriber(Node):
         super().__init__('minimal_publisher')
         
         # 深度影像影像
-        self.depth_subscript_ = self.create_subscription(Image, '/depth_camera/depth_image', self.depth_camera_callback, 5)
+        self.depth_subscript_ = self.create_subscription(Image, '/camera/depth/image', self.depth_camera_callback, 5)
         self.depth_bridge = CvBridge()
         self.depth_image = None
         self.center_x = 0.0
@@ -31,7 +31,7 @@ class DepthSubscriber(Node):
         self.distance = 0.0
         
         # 深度相機資訊 計算像素和實際座標的轉換
-        self.depth_info_subscript_ = self.create_subscription(CameraInfo, '/depth_camera/camera_info', self.depth_info_timer_callback, 5)
+        self.depth_info_subscript_ = self.create_subscription(CameraInfo, '/camera/depth/camera_info', self.depth_info_timer_callback, 5)
         self.k_received = False
         self.k = None
         self.cx = 0.0
@@ -40,7 +40,7 @@ class DepthSubscriber(Node):
         self.fy = 0.0
         
         # 相機影像
-        self.camera_subscript_ = self.create_subscription(Image, '/depth_camera/image', self.camera_callback, 5)
+        self.camera_subscript_ = self.create_subscription(Image, '/camera/color/image', self.camera_callback, 5)
         self.camera_bridge = CvBridge()
         self.camera_image = None
         
@@ -109,18 +109,18 @@ class DepthSubscriber(Node):
         # self.get_logger().info(f'Distance: {self.distance}')
 
         # 顯示深度影像（需要正規化）
-        depth_display = cv2.normalize(
-            self.depth_image,
-            None,
-            0,
-            255,
-            cv2.NORM_MINMAX
-        )
+        # depth_display = cv2.normalize(
+        #     self.depth_image,
+        #     None,
+        #     0,
+        #     255,
+        #     cv2.NORM_MINMAX
+        # )
 
-        depth_display = np.uint8(depth_display)
+        # depth_display = np.uint8(depth_display)
 
-        cv2.imshow("depth", depth_display)
-        cv2.waitKey(1)
+        # cv2.imshow("depth", depth_display)
+        # cv2.waitKey(1)
     
     def depth_info_timer_callback(self, msg):
         # 這裡可以解析深度相機的內部參數，例如焦距、主點等
@@ -142,9 +142,10 @@ class DepthSubscriber(Node):
         self.wheel_results = self.model(camera_image, stream=True, conf=0.80, verbose=False)
         
         # 等待深度圖像
-        while self.depth_image is None:
+        if self.depth_image is None:
             self.get_logger().warning("等待深度圖像...")
             # rclpy.spin_once(self, timeout_sec=0.05)
+            return
 
         h, w = self.depth_image.shape[:2]
         self.best_box = None
@@ -189,8 +190,8 @@ class DepthSubscriber(Node):
         # for r in wheel_results:
         #     annotated_frame = r.plot()
         
-        cv2.imshow("camera", annotated)
-        cv2.waitKey(1)
+        # cv2.imshow("camera", annotated)
+        # cv2.waitKey(1)
 
     def joint_state_callback(self, msg):
         # 這裡可以解析夾爪的關節狀態，例如開合程度等

@@ -85,7 +85,7 @@ arm_to_shelf_control::~arm_to_shelf_control()
 
 void arm_to_shelf_control::run()
 {
-    const double place_distance = 0.004; // 單位mm 放置距離4mm
+    const double place_distance = 0.002; // 單位mm 放置距離4mm
     const double place_vel = 0.01;       // 速度 每秒1cm
 
     move_to_view_shelf_pose();
@@ -132,12 +132,12 @@ void arm_to_shelf_control::run()
     status = "quit";
     twist_req = geometry_msgs::msg::TwistStamped();
     twist_req.header.frame_id = "base_link";
-    twist_req.twist.linear.x = -1 * abs(0.05 * sin(10.0 * M_PI / 180)); // 沿 X 軸
-    twist_req.twist.linear.y = shelf_vel;                            // 沿 Y 軸
-    twist_req.twist.linear.z = abs(0.05 * cos(10.0 * M_PI / 180));      // 沿 Z 軸
-    twist_req.twist.angular.x = 0.0;                                 // 沿 X 軸
-    twist_req.twist.angular.y = 0.0;                                 // 沿 Y 軸
-    twist_req.twist.angular.z = 0.0;                                 // 沿 Z 軸
+    twist_req.twist.linear.x = -1 * abs(0.02 * sin(10.0 * M_PI / 180)); // 沿 X 軸
+    twist_req.twist.linear.y = shelf_vel;                               // 沿 Y 軸
+    twist_req.twist.linear.z = abs(0.02 * cos(10.0 * M_PI / 180));      // 沿 Z 軸
+    twist_req.twist.angular.x = 0.0;                                    // 沿 X 軸
+    twist_req.twist.angular.y = 0.0;                                    // 沿 Y 軸
+    twist_req.twist.angular.z = 0.0;                                    // 沿 Z 軸
 
     init_pose = this->move_group_->getCurrentPose("gripper_tcp");
     success = moveit_servo_move(twist_req, init_pose, 0.0, status);
@@ -242,7 +242,7 @@ bool arm_to_shelf_control::arm_planner(geometry_msgs::msg::Pose &target_pose, st
     }
     else if (state == "feature_postion")
     {
-        this->move_group_->setPoseTarget(target_pose);  
+        this->move_group_->setPoseTarget(target_pose);
         bool succes = (this->move_group_->plan(arm_plan) == moveit::core::MoveItErrorCode::SUCCESS);
 
         if (!succes)
@@ -274,7 +274,7 @@ bool arm_to_shelf_control::arm_planner(geometry_msgs::msg::Pose &target_pose, st
         const double position_offset = 0.5; // 要往後一秒鐘避免撞機
         double t = plan_time * 2 + move_time + abs(cli_used_time) + position_offset;
         RCLCPP_INFO(this->get_logger(), "總時間：%f", t);
-        double shelf_move_distance = this->shelf_vel * t; // 單位公尺
+        double shelf_move_distance = this->shelf_vel * t - 0.01; // 單位公尺
 
         this->shelf_feature_time += rclcpp::Duration::from_seconds(t);
         target_pose.position.y += shelf_move_distance;
@@ -355,7 +355,8 @@ bool arm_to_shelf_control::moveit_servo_move(geometry_msgs::msg::TwistStamped &t
         }
         return true;
     }
-    else{
+    else
+    {
         return false;
     }
 }
