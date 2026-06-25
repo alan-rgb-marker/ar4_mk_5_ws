@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <thread>
+#include <poll.h>
 
 #define FW_VERSION "0.0.1"
 
@@ -12,6 +13,9 @@ namespace ar4_hardware_interface
   {
     // @TODO read version from config
     version_ = FW_VERSION;
+    port_ = port;
+    baudrate_ = baudrate;
+    last_reconnect_time_ = std::chrono::steady_clock::now() - std::chrono::seconds(10); // Cooldown offset
 
     // establish connection with teensy board
     boost::system::error_code ec;
@@ -20,6 +24,7 @@ namespace ar4_hardware_interface
     if (ec)
     {
       RCLCPP_WARN(logger_, "Failed to connect to serial port %s", port.c_str());
+      initialised_ = false;
       return;
     }
     else
@@ -42,7 +47,7 @@ namespace ar4_hardware_interface
     enc_calibrations_.resize(num_joints_);
   }
 
-  TeensyDriver::TeensyDriver() : serial_port_(io_service_) {}
+  TeensyDriver::TeensyDriver() : initialised_(false), serial_port_(io_service_), baudrate_(9600) {}
 
   void TeensyDriver::setStepperSpeed(std::vector<double> &max_speed, std::vector<double> &max_accel)
   {
@@ -119,6 +124,40 @@ namespace ar4_hardware_interface
     exchange(outMsg);
   }
 
+  // Attempt to reconnect to the Teensy serial port
+  bool TeensyDriver::tryReconnect()
+  {
+    auto now = std::chrono::steady_clock::now();
+    // Cooldown check: attempt reconnection at most once every 2 seconds
+    if (std::chrono::duration_cast<std::chrono::seconds>(now - last_reconnect_time_).count() < 2)
+    {
+      return false;
+    }
+    last_reconnect_time_ = now;
+
+    RCLCPP_WARN(logger_, "Attempting to reconnect to serial port %s...", port_.c_str());
+
+    boost::system::error_code ec;
+    if (serial_port_.is_open())
+    {
+      serial_port_.close(ec);
+    }
+
+    serial_port_.open(port_, ec);
+    if (ec)
+    {
+      RCLCPP_WARN(logger_, "Reconnection failed: %s", ec.message().c_str());
+      return false;
+    }
+
+    serial_port_.set_option(boost::asio::serial_port_base::baud_rate(static_cast<uint32_t>(baudrate_)));
+    serial_port_.set_option(boost::asio::serial_port_base::parity(boost::asio::serial_port_base::parity::none));
+    
+    RCLCPP_INFO(logger_, "Successfully reconnected to serial port %s", port_.c_str());
+    initialised_ = true;
+    return true;
+  }
+
   // Send msg to board and collect data
   void TeensyDriver::exchange(std::string outMsg)
   {
@@ -130,12 +169,16 @@ namespace ar4_hardware_interface
 
     if (!transmit(outMsg, errTransmit))
     {
-      RCLCPP_ERROR(logger_, "Error in transmit: %s", errTransmit.c_str());
+      RCLCPP_ERROR_THROTTLE(logger_, clock_, 1000, "Error in transmit: %s", errTransmit.c_str());
+      return; // If transmit failed, do not wait for receive
     }
 
+    int max_attempts = 5; // Set maximum attempt count to prevent infinite loop
+    int attempts = 0;
     bool done = false;
-    while (!done)
+    while (!done && attempts < max_attempts)
     {
+      attempts++;
       receive(inMsg);
       // parse msg
       if (inMsg.length() > 0)
@@ -159,11 +202,25 @@ namespace ar4_hardware_interface
           done = true;
         }
       }
+      else
+      {
+        // Timeout happened or empty string received
+        RCLCPP_WARN_THROTTLE(logger_, clock_, 1000, "Receive timeout or empty string, attempt %d/%d", attempts, max_attempts);
+      }
     }
   }
 
   bool TeensyDriver::transmit(std::string msg, std::string &err)
   {
+    if (!initialised_)
+    {
+      if (!tryReconnect())
+      {
+        err = "Serial port not initialised and reconnection failed";
+        return false;
+      }
+    }
+
     boost::system::error_code ec;
     const auto sendBuffer = boost::asio::buffer(msg.c_str(), msg.size());
 
@@ -175,19 +232,55 @@ namespace ar4_hardware_interface
     }
     else
     {
-      err = "Error in transmit";
+      err = ec.message();
+      RCLCPP_ERROR_THROTTLE(logger_, clock_, 2000, "Transmit failed, closing serial port: %s", ec.message().c_str());
+      
+      boost::system::error_code close_ec;
+      serial_port_.close(close_ec);
+      initialised_ = false;
       return false;
     }
   }
 
   void TeensyDriver::receive(std::string &inMsg)
   {
+    inMsg = "";
+    if (!initialised_ || !serial_port_.is_open())
+    {
+      return;
+    }
+
     char c;
     std::string msg = "";
     bool eol = false;
+    int fd = serial_port_.lowest_layer().native_handle();
+    if (fd < 0)
+    {
+      return;
+    }
+
     while (!eol)
     {
-      boost::asio::read(serial_port_, boost::asio::buffer(&c, 1));
+      // Use poll to wait for data on the serial file descriptor with a 50ms timeout.
+      // This prevents the read operation from blocking indefinitely if the serial port hangs.
+      struct pollfd pfd;
+      pfd.fd = fd;
+      pfd.events = POLLIN;
+      int ret = poll(&pfd, 1, 50); // 50ms timeout
+      if (ret <= 0 || !(pfd.revents & POLLIN))
+      {
+        // Timeout or poll error, exit the read loop
+        break;
+      }
+
+      boost::system::error_code ec;
+      boost::asio::read(serial_port_, boost::asio::buffer(&c, 1), ec);
+      if (ec)
+      {
+        RCLCPP_ERROR_THROTTLE(logger_, clock_, 2000, "Error in read: %s", ec.message().c_str());
+        break;
+      }
+
       switch (c)
       {
       case '\r':

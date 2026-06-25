@@ -5,6 +5,7 @@ from geometry_msgs.msg import PoseStamped, Pose
 from tf2_geometry_msgs import do_transform_pose
 from tf2_ros import Buffer, TransformListener, TransformException
 from std_srvs.srv import Trigger
+from message_filters import Subscriber, ApproximateTimeSynchronizer
 
 
 import cv2
@@ -25,7 +26,7 @@ class ShelfPoseDetector(Node):
         # =========================
         self.depth_subscript_ = self.create_subscription(
             Image,
-            '/camera/depth/image',
+            '/camera/depth/image_raw',
             self.depth_camera_callback,
             10
         )
@@ -34,7 +35,7 @@ class ShelfPoseDetector(Node):
         self.depth_bridge = CvBridge()
         self.depth_image = None
         
-        self.depth_info_subscript_ = self.create_subscription(CameraInfo, '/camera/depth/camera_info', self.depth_info_timer_callback, 5)
+        self.depth_info_subscript_ = self.create_subscription(CameraInfo, '/camera/color/camera_info', self.depth_info_timer_callback, 5)
         self.k = None
         self.k_received = False
         self.cx = 0.0
@@ -48,7 +49,7 @@ class ShelfPoseDetector(Node):
         # =========================
         self.camera_subscript_ = self.create_subscription(
             Image,
-            '/camera/color/image',
+            '/camera/color/image_raw',
             self.camera_callback,
             5
         )
@@ -59,8 +60,12 @@ class ShelfPoseDetector(Node):
         # YOLO
         # =========================
         self.model = YOLO(
+            # '/home/alan/Moveit2/ar4_mk_5_ws/src/vision_yolo_depth/yolo/real_shelf_best.pt'
             '/home/alan/Moveit2/ar4_mk_5_ws/src/vision_yolo_depth/yolo/new_gz_wheel_shelf.pt'
         )
+        # self.model = YOLO(
+        #     '/home/alan/Moveit2/ar4_mk_5_ws/src/vision_yolo_depth/yolo/new_gz_wheel_shelf.pt'
+        # )
         self.bbox = None
         self.yolo_detect_shelf_results = None
         
@@ -72,7 +77,7 @@ class ShelfPoseDetector(Node):
         self.mesh.scale(0.001, center=(0, 0, 0))
         # 計算法向量
         self.mesh.compute_vertex_normals()
-        self.source_pcd = self.mesh.sample_points_uniformly(number_of_points=15000)
+        self.source_pcd = self.mesh.sample_points_uniformly(number_of_points=5000)
         # o3d.visualization.draw_geometries([self.source_pcd])
         self.intrinsics = None
         
@@ -92,9 +97,9 @@ class ShelfPoseDetector(Node):
         # ========================
         self.view_shelf_coord_service_ = self.create_service(Armcoodinate, 'view_shelf_coord', self.view_shelf_coordinate_callback)
         self.view_shelf_coord = Pose()
-        self.view_shelf_coord.position.x = 0.367
+        self.view_shelf_coord.position.x = 0.3
         self.view_shelf_coord.position.y = 0.000
-        self.view_shelf_coord.position.z = 0.287
+        self.view_shelf_coord.position.z = 0.4
         self.view_shelf_coord.orientation.x = 0.704
         self.view_shelf_coord.orientation.y = 0.704
         self.view_shelf_coord.orientation.z = 0.062
@@ -131,18 +136,22 @@ class ShelfPoseDetector(Node):
             msg,
             desired_encoding='passthrough'
         )
+        if msg.encoding == '16UC1':
+            self.depth_image = self.depth_image.astype(np.float32) / 1000.0
+        else:
+            self.depth_image = self.depth_image.astype(np.float32)
         
         self.detect_view_pose()       
         if self.yolo_detect_shelf_results is None or not self.k_received or self.start_detect_shelf_pose is not True:
-            """ depth_display = cv2.normalize(
-                self.depth_image,
-                None,
-                0,
-                255,
-                cv2.NORM_MINMAX
-            )
-            cv2.imshow("depth", depth_display.astype(np.uint8))
-            cv2.waitKey(1) """
+            # depth_display = cv2.normalize(
+            #     self.depth_image,
+            #     None,
+            #     0,
+            #     255,
+            #     cv2.NORM_MINMAX
+            # )
+            # cv2.imshow("depth", depth_display.astype(np.uint8))
+            # cv2.waitKey(1)
             return
 
         self.detect_shelf_pose()
@@ -185,12 +194,13 @@ class ShelfPoseDetector(Node):
         frame = self.camera_bridge.imgmsg_to_cv2(msg, 'bgr8')
 
         # yolo_detect_shelf_results = self.model(frame, verbose=False)
-        self.yolo_detect_shelf_results = self.model(frame, stream=True, conf=0.80, verbose=False)
+        self.yolo_detect_shelf_results = self.model(frame, stream=True, conf=0.70, verbose=False)
 
         # 等待深度圖像
-        while self.depth_image is None:
+        if self.depth_image is None:
             self.get_logger().warning("等待深度圖像...")
-            rclpy.spin_once(self, timeout_sec=0.05)
+            # rclpy.spin_once(self, timeout_sec=0.05)
+            return
 
         h, w = self.depth_image.shape[:2]
         self.best_box = None
@@ -207,16 +217,16 @@ class ShelfPoseDetector(Node):
             for box in boxes_data:
                 x1, y1, x2, y2, conf, cls = box
 
-                y_max_idx = max(0, min(int(y2), h - 1))
-                x_max_idx = max(0, min(int(x2), w - 1))
-                x_min_idx = max(0, min(int(x1), w - 1))
+                # y_max_idx = max(0, min(int(y2), h - 1))
+                # x_max_idx = max(0, min(int(x2), w - 1))
+                # x_min_idx = max(0, min(int(x1), w - 1))
 
-                xmax_z = self.depth_image[y_max_idx, x_max_idx]
-                xmin_z = self.depth_image[y_max_idx, x_min_idx]
+                # xmax_z = self.depth_image[y_max_idx, x_max_idx]
+                # xmin_z = self.depth_image[y_max_idx, x_min_idx]
 
-                real_width = (x2 * xmax_z - x1 * xmin_z) / self.fx
-                if real_width < 0.111:
-                    continue
+                # real_width = (x2 * xmax_z - x1 * xmin_z) / self.fx
+                # if real_width < 0.111:
+                #     continue
                 
                 if conf > self.best_conf:
                     self.best_conf = conf
@@ -224,22 +234,28 @@ class ShelfPoseDetector(Node):
 
         if self.best_box is None:
             self.yolo_detect_shelf_results = None
+            # self.get_logger().info("Camera callback triggered")
             return
 
         self.bbox = [int(self.best_box[0]), int(self.best_box[1]), int(self.best_box[2]), int(self.best_box[3])]
+        
 
-        # cv2.imshow("camera", annotated)
-        # cv2.waitKey(1)
+        cv2.imshow("camera", annotated)
+        cv2.waitKey(1)
     
     def detect_view_pose(self):
         if self.yolo_detect_shelf_results is None:
             return False
         
-        view_shelf_transform = self.tf_buffer.lookup_transform(
-            'base_link',
-            'gripper_tcp',
-            rclpy.time.Time()
-        )
+        try:
+            view_shelf_transform = self.tf_buffer.lookup_transform(
+                'base_link',
+                'gripper_tcp',
+                rclpy.time.Time()
+            )
+        except TransformException as e:
+            # 找不到就先跳出，等下一次 callback
+            return False
         
         current_pose = Pose()
         current_pose.position.x = round(view_shelf_transform.transform.translation.x, 4)
@@ -334,6 +350,13 @@ class ShelfPoseDetector(Node):
         target = o3d.geometry.PointCloud()
         target.points = o3d.utility.Vector3dVector(points)
         
+        # 1. 下採樣 (Voxel Filter)，讓點雲均勻化，加快 ICP 速度並減少權重失衡
+        target = target.voxel_down_sample(voxel_size=0.001) # 5mm 
+        # 2. 濾除孤立雜訊點 (Statistical Outlier Removal)
+        target, ind = target.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+        
+        target.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.02, max_nn=30))
+        
         if len(points) > 0:
             # points 的形狀是 (N, 3)，取平均後會得到一組 [X_avg, Y_avg, Z_avg]
             centroid = np.mean(points, axis=0)
@@ -346,6 +369,7 @@ class ShelfPoseDetector(Node):
             # 如果沒有有效點，給予預設值 (全 0)
             x_center, y_center, z_center = 0.0, 0.0, 0.0
             self.get_logger().warning("深度圖 ROI 內沒有有效點！")
+            return
         
         if self.depth_camera_to_base_rot is not None:
             # R_base_camera 是從 depth_camera 到 base_link 的旋轉
@@ -400,10 +424,11 @@ class ShelfPoseDetector(Node):
         T = np.linalg.inv(T_scan_to_cad)
         # self.get_logger().info(f"ICP 變換矩陣的平移 (Origin): x={T[0,3]:.3f}, y={T[1,3]:.3f}, z={T[2,3]:.3f}")
         
-        self.shelf_pose_msg.header = "depth_camera"
+        self.shelf_pose_msg.header = "camera_color_optical_frame"
         
         # 柱子尖端在模型局部空間的座標 (將 mm 轉換為公尺 m)
-        tip_local = np.array([0.031485, 0.000, 0.105222, 1.0])
+        # tip_local = np.array([0.031485, 0.000, 0.105222, 1.0])
+        tip_local = np.array([0.0314, 0.000, 0.105, 1.0])
         
         # 將尖端座標透過 T 矩陣轉換到 depth_camera 座標系
         tip_camera = T @ tip_local
@@ -421,11 +446,12 @@ class ShelfPoseDetector(Node):
         self.shelf_pose_msg.pose.orientation.w = float(q[3])
         
         # self.get_logger().info(f"Shelf Pose in depth_camera frame: {self.shelf_pose_msg}\n")
-        self.get_logger().info(f"Publishing shelf pose to MoveIt: {self.goal_shelf_pose_msg}\n")
+        # self.get_logger().info(f"Publishing shelf pose to MoveIt: {self.goal_shelf_pose_msg}\n")
         
         try:
             # 取得從 depth_camera 到 base_link 的轉換
-            transform = self.tf_buffer.lookup_transform('base_link', 'depth_camera', rclpy.time.Time())
+            transform = self.tf_buffer.lookup_transform('base_link', 'camera_color_optical_frame', rclpy.time.Time())
+            # transform = self.tf_buffer.lookup_transform('base_link', 'camera_color_optical_frame', rclpy.time.Time())
             self.depth_camera_to_base_rot = transform.transform.rotation
             # self.get_logger().info(f'Transform: {transform}')
         except TransformException as e:
@@ -435,7 +461,8 @@ class ShelfPoseDetector(Node):
         if self.k_received is not True:
             return
         self.goal_shelf_pose_msg = do_transform_pose(self.shelf_pose_msg.pose, transform)
-
+        # self.get_logger().info(f'架子座標：{self.goal_shelf_pose_msg}')
+     
     def view_shelf_coordinate_callback(self, request, response):
         request.result = "get_view_shelf_coord"
         
@@ -450,6 +477,7 @@ class ShelfPoseDetector(Node):
     def shelf_pose_callback(self, request, response):
         
         while self.yolo_detect_shelf_results is None:
+            self.get_logger().warning("尚未偵測到架子，無法提供座標資訊。")
             pass
         # Ensure we have a transformed PoseStamped available
         while not isinstance(self.goal_shelf_pose_msg, Pose):
@@ -462,18 +490,21 @@ class ShelfPoseDetector(Node):
         self.detect_shelf_pose()
         start_time = self.get_clock().now().to_msg()
         
-        self.goal_shelf_pose_msg.orientation.x = 0.704
-        self.goal_shelf_pose_msg.orientation.y = 0.704
-        self.goal_shelf_pose_msg.orientation.z = 0.062
-        self.goal_shelf_pose_msg.orientation.w = 0.062
+        self.get_logger().info(f"Received shelf_coord request, responding with shelf pose: {self.goal_shelf_pose_msg}\n")
+        goal = self.goal_shelf_pose_msg
+        
+        goal.orientation.x = 0.704
+        goal.orientation.y = 0.704
+        goal.orientation.z = 0.062
+        goal.orientation.w = 0.062
                     
         response.start_pos_time = start_time
-        response.shelf_pose = self.goal_shelf_pose_msg
+        response.shelf_pose = goal
         response.status_message = "success"
         # response.shelf_vel = 0.0
         response.shelf_vel = self.shelf_vel
 
-        # self.get_logger().info(f"Publishing shelf pose to MoveIt: {self.goal_shelf_pose_msg}\n")
+        self.get_logger().info(f"Publishing shelf pose to MoveIt: {goal}\n")
         return response
         
 

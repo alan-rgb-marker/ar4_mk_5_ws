@@ -22,8 +22,8 @@ public:
         RCLCPP_INFO(get_logger(), "Step 1: Moving to target pose...");
         geometry_msgs::msg::Pose target_pose;
         target_pose.position.x = 0.000;
-        target_pose.position.y = -0.215;
-        target_pose.position.z = 0.287;
+        target_pose.position.y = -0.3;
+        target_pose.position.z = 0.31;
         target_pose.orientation.x = 1.0;
         target_pose.orientation.y = 0.0;
         target_pose.orientation.z = 0.0;
@@ -63,6 +63,9 @@ public:
         auto future_reponse = client->async_send_request(get_wheel_request);
 
         geometry_msgs::msg::Pose grasp_pose = future_reponse.get()->arm_cood; // ← 欄位名你自己改
+
+        // grasp_pose.position.x -= 0.032; // ← 因為深度相機和相機同步深度相機自動放大兩倍
+        // grasp_pose.position.y /= 2; // ← 因為深度相機和相機同步深度相機自動放大兩倍
 
         RCLCPP_INFO(get_logger(), "Grasp pose: (%.3f, %.3f, %.3f)",
                     grasp_pose.position.x,

@@ -1,46 +1,129 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, TimerAction, LogInfo
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction, LogInfo, RegisterEventHandler
+from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import PathJoinSubstitution
+from launch.substitutions import PathJoinSubstitution, LaunchConfiguration
+from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
-
-    # 1. 定義第一個要執行的 Launch 檔案
-    arm_to_shelf_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution([
-                FindPackageShare('arm_to_shelf_control'),
-                'launch', 
-                'main_arm_to_shelf.launch.py' # 修正：原程式碼多了 .launch.launch.py
-            ])
+    
+    use_sim_time_cfg = LaunchConfiguration('use_sim_time')
+    
+    use_sim_time_arg = DeclareLaunchArgument(
+            'use_sim_time',
+            default_value='False',
+            description='Use simulation time'
         )
-    )
 
-    # 2. 定義第二個要接續執行的 Launch 檔案
-    main_get_wheel_launch = IncludeLaunchDescription(
+    wheel_pose_detect = Node(
+        package='vision_yolo_depth',
+        executable='main_service',
+        name='main_service',
+        parameters=[{
+                'use_sim_time': use_sim_time_cfg
+            }]
+    )
+    
+    main_get_wheel_node = Node(
+        package='arm_to_shelf_control',
+        executable='get_wheel_node',
+        name='get_wheel_node',
+        parameters=[{
+                'use_sim_time': use_sim_time_cfg
+            }]
+    )
+    
+    main_arm_to_shelf_control_node = Node(
+        package='arm_to_shelf_control',
+        executable='arm_to_shelf_control_node',
+        # name='arm_to_shelf_control_node',
+        parameters=[{
+                'use_sim_time': use_sim_time_cfg
+            }]
+    )
+    
+    moveit_servo_service = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            PathJoinSubstitution([
-                FindPackageShare('arm_to_shelf_control'),
-                'launch', 
-                'main_get_wheel.launch.py'   # 修正：原程式碼多了 .launch.launch.py
-            ])
-        )
+            PathJoinSubstitution(
+                [
+                    FindPackageShare("arm_to_shelf_control"),
+                    "launch",
+                    "ar4_servo.launch.py",
+                ]
+            ),
+        ),
+        launch_arguments={'use_sim_time': LaunchConfiguration('use_sim_time')}.items()
     )
 
-    # 3. ⚠️ 關鍵修改：改成秒數等待 (例如等待 5.0 秒)
-    # period 的單位是秒，你可以改成你想要的任何數字，比如 5.0, 10.0 等
-    delay_second_launch = TimerAction(
-        period=5.0, 
-        actions=[
-            LogInfo(msg="已等待 5 秒，現在開始啟動第二個 Launch..."),
-            main_get_wheel_launch
-        ]
-    )
-
-    # 4. 回傳 Launch 敘述
-    # 這裡把第一個 launch 和 定時器一起塞進去
     return LaunchDescription([
-        arm_to_shelf_launch,
-        delay_second_launch
+        use_sim_time_arg,
+        wheel_pose_detect,
+        main_get_wheel_node,
+        main_arm_to_shelf_control_node,
+        moveit_servo_service
     ])
+    
+#     use_sim_time_arg = DeclareLaunchArgument(
+#         'use_sim_time',
+#         default_value='False',
+#         description='Use simulation (Gazebo) clock if true'
+#     )
+    
+#     use_sim_time_val = LaunchConfiguration('use_sim_time')
+
+#     move_group_include = IncludeLaunchDescription(
+#         PythonLaunchDescriptionSource(
+#             PathJoinSubstitution(
+#                 [
+#                     FindPackageShare("ar4_moveit_config"),
+#                     "launch",
+#                     "move_group.launch.py",
+#                 ]
+#             )
+#         )
+#     )
+
+#     get_wheel_launch = IncludeLaunchDescription(
+#         PythonLaunchDescriptionSource(
+#             PathJoinSubstitution([
+#                 FindPackageShare('arm_to_shelf_control'),
+#                 'launch', 
+#                 'main_get_wheel.launch.py'   # 修正：原程式碼多了 .launch.launch.py
+#             ])
+#         ),
+        
+#         launch_arguments={'use_sim_time': use_sim_time_val}.items()
+#     )
+
+
+#     arm_to_shelf_launch = IncludeLaunchDescription(
+#         PythonLaunchDescriptionSource(
+#             PathJoinSubstitution([
+#                 FindPackageShare('arm_to_shelf_control'),
+#                 'launch', 
+#                 'main_arm_to_shelf.launch.py' # 修正：原程式碼多了 .launch.launch.py
+#             ])
+#         ),
+        
+#         launch_arguments={'use_sim_time': use_sim_time_val}.items()
+#     )
+    
+#     ar4_servo_launch = IncludeLaunchDescription(
+#         PythonLaunchDescriptionSource(
+#             PathJoinSubstitution([
+#                 FindPackageShare('arm_to_shelf_control'),
+#                 'launch', 
+#                 'ar4_servo.launch.py' # 修正：原程式碼多了 .launch.launch.py
+#             ])
+#         ),
+#         launch_arguments={'use_sim_time': use_sim_time_val}.items()
+#     )
+
+#     return LaunchDescription([
+#         use_sim_time_arg,
+#         # move_group_include,
+#         get_wheel_launch,
+#         arm_to_shelf_launch,
+#         ar4_servo_launch
+#     ])

@@ -16,13 +16,13 @@
   gz_type_name: "gz.msgs.Model"
   direction: GZ_TO_ROS
 
-- ros_topic_name: "/camera/color/image"
+- ros_topic_name: "/camera/color/image_raw"
   gz_topic_name: "/camera/image"
   ros_type_name: "sensor_msgs/msg/Image"
   gz_type_name: "gz.msgs.Image"
   direction: GZ_TO_ROS
 
-- ros_topic_name: "/camera/depth/image"
+- ros_topic_name: "/camera/depth/image_raw"
   gz_topic_name: "/camera/depth_image"
   ros_type_name: "sensor_msgs/msg/Image"
   gz_type_name: "gz.msgs.Image"

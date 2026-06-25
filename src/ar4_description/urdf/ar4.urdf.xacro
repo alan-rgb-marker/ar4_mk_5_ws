@@ -130,7 +130,7 @@
     <visual>
       <origin xyz="0 0 0.006" rpy="1.5708 0 -3.14159"/>
       <geometry>
-        <mesh filename="file://$(find ar4_description)/meshes//arm_holder.stl"/>
+        <mesh filename="file://$(find ar4_description)/meshes/arm_holder.stl"/>
       </geometry>
       <material name="arm_holder_material">
         <color rgba="0.980392 0.713725 0.00392157 1"/>
@@ -144,7 +144,7 @@
     </collision>
     <!-- Part deep_camera -->
     <visual>
-      <origin xyz="0 0.08157 0.039" rpy="-0 0 -3.14159"/>
+      <origin xyz="0 0.08157 0.039" rpy="-0 0 0"/>
       <geometry>
         <mesh filename="file://$(find ar4_description)/meshes/deep_camera.stl"/>
       </geometry>
@@ -153,7 +153,7 @@
       </material>
     </visual>
     <collision>
-      <origin xyz="0 0.08157 0.039" rpy="-0 0 -3.14159"/>
+      <origin xyz="0 0.08157 0.039" rpy="-0 0 0"/>
       <geometry>
         <mesh filename="file://$(find ar4_description)/meshes/deep_camera.stl"/>
       </geometry>
@@ -201,11 +201,21 @@
     </inertial>
   </link>
   <joint name="camera_frame" type="fixed">
-    <origin xyz="0.0301 0.08157 0.036" rpy="-0 0 -3.14159"/>
+    <origin xyz="-0.0301 0.08157 0.036" rpy="-0 0 0"/>
     <parent link="cylinder"/>
     <child link="camera"/>
     <axis xyz="0 0 0"/>
   </joint>
+  <link name="camera_color_optical_frame">
+    <origin xyz="0 0 0" rpy="0 -0 0"/>
+  </link>
+  <joint name="real_camera_frame" type="fixed">
+    <origin xyz="-0.0301 0.08157 0.036" rpy="1.570795 -1.570795 -3.14159"/>
+    <parent link="cylinder"/>
+    <child link="camera_color_optical_frame"/>
+    <axis xyz="0 0 0"/>
+  </joint>
+  <!-- Frame camera_depth_optical_frame (dummy link + fixed joint) -->
   <!-- Frame depth_camera (dummy link + fixed joint) -->
   <link name="depth_camera">
     <origin xyz="0 0 0" rpy="0 -0 0"/>
@@ -219,6 +229,15 @@
     <origin xyz="-0.0019 0.08157 0.036" rpy="1.570795 -1.570795 -3.14159"/>
     <parent link="cylinder"/>
     <child link="depth_camera"/>
+    <axis xyz="0 0 0"/>
+  </joint>
+  <link name="camera_depth_optical_frame">
+    <origin xyz="0 0 0" rpy="0 -0 0"/>
+  </link>
+  <joint name="real_depth_camera_frame" type="fixed">
+    <origin xyz="-0.0019 0.08157 0.036" rpy="1.570795 -1.570795 -3.14159"/>
+    <parent link="cylinder"/>
+    <child link="camera_depth_optical_frame"/>
     <axis xyz="0 0 0"/>
   </joint>
   <!-- Link gripper -->
@@ -321,11 +340,13 @@
   </joint>
 
   <!-- Frame gripper_tcp (Tool Center Point) -->
-  <link name="gripper_tcp"/>
+  <link name="gripper_tcp">
+    <origin xyz="0 0 0" rpy="0 -0 0"/>
+  </link>
   
   <joint name="gripper_tcp_joint" type="fixed">
     <!-- 這裡的 xyz 可以根據您夾爪末端的實際距離進行微調，目前 z 暫設為 0.1515 (15.15公分) -->
-    <origin xyz="0 0 0.1515" rpy="0 0 0"/>
+    <origin xyz="0 0 0.1566" rpy="0 0 0"/>
     <parent link="link_6"/>
     <child link="gripper_tcp"/>
   </joint>

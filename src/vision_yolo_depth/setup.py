@@ -27,6 +27,10 @@ setup(
             'depth_camera = vision_yolo_depth.vision:main',
             'shelf_pose_detect = vision_yolo_depth.shelf_pose_detect_service:main',
             'demo_shelf_pose_detect = vision_yolo_depth.demo_shelf_pose_detect:main',
+            'demo_real_depth_camera = vision_yolo_depth.demo_real_depth_camera:main',
+            'demo_yolo = vision_yolo_depth.demo_yolo:main',
+            'demo_shelf_pose_detect_with_yolo = vision_yolo_depth.demo_shelf_pose_detect_with_yolo:main',
+            'main_service = vision_yolo_depth.main_service:main',
         ],
     },
 )

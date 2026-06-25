@@ -37,6 +37,8 @@ ament_target_dependencies(arm_to_shelf_control_node
   tf2_ros
 )
 
+
+
 add_executable(demo_shelf_moveit_node src/demo_shelf_moveit.cpp)
 target_include_directories(demo_shelf_moveit_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -70,6 +72,26 @@ ament_target_dependencies(get_wheel_node
   geometry_msgs
   vision_interfaces
   std_srvs
+)
+
+add_executable(get_wheel_from_shelf_node src/get_wheel_from_shelf.cpp)
+target_include_directories(get_wheel_from_shelf_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+ament_target_dependencies(get_wheel_from_shelf_node
+  rclcpp
+  vision_interfaces
+  moveit_servo
+  moveit_ros_planning_interface
+  moveit_servo
+  geometry_msgs
+  tf2
+  tf2_ros
+)
+
+install(TARGETS get_wheel_from_shelf_node
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 install(TARGETS arm_to_shelf_control_node

@@ -89,22 +89,25 @@ void arm_to_shelf_control::run()
     const double place_vel = 0.01;       // 速度 每秒1cm
 
     move_to_view_shelf_pose();
+    RCLCPP_INFO(this->get_logger(), "第一步完成");
 
     // ---------------- 第一步執行到看架子的點------------------
 
-    std::this_thread::sleep_for(4s); // 等待一秒確保 python端可以偵測到shelf pose 已經完成動作
-
+    std::this_thread::sleep_for(3s); // 等待一秒確保 python端可以偵測到shelf pose 已經完成動作
+    
     move_to_shelf_pose();
     auto reset_pub = this->create_publisher<std_msgs::msg::Bool>("update_robot_state", rclcpp::SystemDefaultsQoS());
     std_msgs::msg::Bool reset_msg;
     reset_msg.data = true;
     reset_pub->publish(reset_msg);
+    RCLCPP_INFO(this->get_logger(), "第二步執行完成，已經到達架子位置，等待貨架特徵點時間到達...");
 
     // ---------------- 第二步執行到架子未來位置------------------
     rclcpp::Time now = this->now();
     bool suc = false;
     while (now < this->shelf_feature_time)
     {
+        // RCLCPP_INFO(this->get_logger(), "時間未到");
         now = this->now();
         if (!suc)
             this->move_group_->setStartStateToCurrentState();
@@ -114,16 +117,18 @@ void arm_to_shelf_control::run()
     // 接下來去twist
     std::string status = "put_in";
     geometry_msgs::msg::TwistStamped twist_req;
-    twist_req.header.frame_id = "base_link";
-    twist_req.twist.linear.x = abs(place_vel * sin(10 * M_PI / 180));      // 沿 X 軸
-    twist_req.twist.linear.y = shelf_vel;                                  // 沿 Y 軸
-    twist_req.twist.linear.z = -1 * abs(place_vel * cos(10 * M_PI / 180)); // 沿 Z 軸
-    twist_req.twist.angular.x = 0.0;                                       // 沿 X 軸
-    twist_req.twist.angular.y = 0.0;                                       // 沿 Y 軸
-    twist_req.twist.angular.z = 0.0;                                       // 沿 Z 軸
+    geometry_msgs::msg::PoseStamped init_pose;
+    bool success;
+    // twist_req.header.frame_id = "base_link";
+    // twist_req.twist.linear.x = abs(place_vel * sin(10 * M_PI / 180));      // 沿 X 軸
+    // twist_req.twist.linear.y = shelf_vel;                                  // 沿 Y 軸
+    // twist_req.twist.linear.z = -1 * abs(place_vel * cos(10 * M_PI / 180)); // 沿 Z 軸
+    // twist_req.twist.angular.x = 0.0;                                       // 沿 X 軸
+    // twist_req.twist.angular.y = 0.0;                                       // 沿 Y 軸
+    // twist_req.twist.angular.z = 0.0;                                       // 沿 Z 軸
 
-    geometry_msgs::msg::PoseStamped init_pose = this->move_group_->getCurrentPose("gripper_tcp");
-    bool success = moveit_servo_move(twist_req, init_pose, place_distance);
+    // geometry_msgs::msg::PoseStamped init_pose = this->move_group_->getCurrentPose("gripper_tcp");
+    // bool success = moveit_servo_move(twist_req, init_pose, place_distance);
     // ------------------------ 第三步執行 MoveIt Servo 控制手臂跟隨貨架移動 並將輪自放到柱子裡面--------------------
 
     gripper_planner("open");
@@ -208,21 +213,28 @@ void arm_to_shelf_control::move_to_shelf_pose()
         }
         RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
     }
-
+    RCLCPP_INFO(this->get_logger(), "測試點");
     auto shelf_coord_reponse = shelf_coord_client_->async_send_request(shelf_coord_request);
-
+    RCLCPP_INFO(this->get_logger(), "測試點 1");
+    
     auto response = shelf_coord_reponse.get();
+    RCLCPP_INFO(this->get_logger(), "測試點 2");
 
     rclcpp::Time start_cli = response->start_pos_time;
     this->shelf_feature_time = start_cli;
     std::string status = response->status_message;
     shelf_vel = response->shelf_vel;
+    geometry_msgs::msg::Pose shelf_pose = response->shelf_pose;
+    // shelf_pose.position.x -= (0.02 * std::sin(10 * 3.14159 / 180)); // 往前修正1cm 避免撞到架子
+    shelf_pose.position.x += 0.0015; // 往前修正1cm 避免撞到架子
+    shelf_pose.position.y -= -1 * (shelf_vel / abs(shelf_vel)) * 0.0;                        // 往後修正1cm 避免撞到架子
+    shelf_pose.position.z += (0.03 * std::cos(10 * 3.14159 / 180)); // 往上修正1cm 避免撞到架子
 
     rclcpp::Time end_cli = this->now();
 
     elapsed_time = end_cli - start_cli;
 
-    bool success = arm_planner(response->shelf_pose, "feature_postion", elapsed_time.seconds()); // 寫到這邊就已經讓夾爪移到架子未來位置
+    bool success = arm_planner(shelf_pose, "feature_postion", elapsed_time.seconds()); // 寫到這邊就已經讓夾爪移到架子未來位置
     // bool success = arm_planner(response->shelf_pose); // 寫到這邊就已經讓夾爪移到架子未來位置
 }
 

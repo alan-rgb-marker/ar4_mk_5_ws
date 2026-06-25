@@ -23,7 +23,7 @@ class DepthSubscriber(Node):
         super().__init__('minimal_publisher')
         
         # 深度影像影像
-        self.depth_subscript_ = self.create_subscription(Image, '/camera/depth/image', self.depth_camera_callback, 5)
+        self.depth_subscript_ = self.create_subscription(Image, '/camera/depth/image_raw', self.depth_camera_callback, 5)
         self.depth_bridge = CvBridge()
         self.depth_image = None
         self.center_x = 0.0
@@ -40,15 +40,15 @@ class DepthSubscriber(Node):
         self.fy = 0.0
         
         # 相機影像
-        self.camera_subscript_ = self.create_subscription(Image, '/camera/color/image', self.camera_callback, 5)
+        self.camera_subscript_ = self.create_subscription(Image, '/camera/color/image_raw', self.camera_callback, 5)
         self.camera_bridge = CvBridge()
         self.camera_image = None
         
         # yolo模型 wheel
-        # self.model = YOLO('/home/alan/Moveit2/ar4_mk_5_ws/src/vision_yolo_depth/yolo/wheel_best.pt')
-        self.model = YOLO(
-            '/home/alan/Moveit2/ar4_mk_5_ws/src/vision_yolo_depth/yolo/new_gz_wheel_shelf.pt'
-        )
+        self.model = YOLO('/home/alan/Moveit2/ar4_mk_5_ws/src/vision_yolo_depth/yolo/new_gz_wheel_shelf.pt')
+        # self.model = YOLO('/home/alan/Moveit2/ar4_mk_5_ws/src/vision_yolo_depth/yolo/real_wheel_best.pt')
+        # self.model = YOLO('/home/alan/Moveit2/ar4_mk_5_ws/src/vision_yolo_depth/yolo/real_shelf_best.pt')
+
         self.wheel_results = None
         self.best_box = None
         self.best_conf = -1.0
@@ -61,7 +61,7 @@ class DepthSubscriber(Node):
         self.y = 0.0
         self.z = 0.0
         self.wheel_pose = Pose()     # base_link到輪胎的座標
-        self.wheel_pose_msg = PoseStamped() # 深度相機到輪胎的座標
+        self.wheel_pose_msg = Pose() # 深度相機到輪胎的座標
                 
         # 讀取joint state夾爪
         self.gripper_joint_state_subscript_ = self.create_subscription(JointState, '/joint_states', self.joint_state_callback, 5)
@@ -69,25 +69,53 @@ class DepthSubscriber(Node):
         
         # 發布座標
         self.arm_cood_srv = self.create_service(Armcoodinate, 'wheel_pose', self.arm_coordinate_callback)
+        
+        self.is_reponse_coord = False
 
     def depth_camera_callback(self, msg):
+        # if self.is_reponse_coord:
+        #     # 已經回應過座標了，就不再處理影像了
+        #     return
         self.depth_image = self.depth_bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
+        
+        if msg.encoding == '16UC1':
+            # 將整數 mm 矩陣轉為浮點數，並除以 1000 變成公尺
+            self.depth_image = self.depth_image.astype(np.float32) / 1000.0
         
         # 取中心點距離
         h, w = self.depth_image.shape
         
         if self.bbox is not None and self.depth_image is not None:
+            # self.get_logger().info(f'深度影像尺寸: {w}x{h}, bbox: {self.bbox}')
             
             xmin, ymin, xmax, ymax = self.bbox
 
-            self.center_x = int((xmin + xmax) / 2)
-            self.center_y = int((ymin + ymax) / 2)
+            # 計算中心點
+            raw_center_x = int((xmin + xmax) / 2)
+            raw_center_y = int((ymin + ymax) / 2)
 
+            # 【核心修正】加入防越界機制 (Clamp)
+            # 確保中心點坐標絕對不會小於 0，也不會大於等於影像的寬高
+            self.center_x = max(0, min(raw_center_x, w - 1))
+            self.center_y = max(0, min(raw_center_y, h - 1))
+            
+            # self.get_logger().info(f'x 中心：{self.center_x}, y 中心：{self.center_y}')
+
+            # 安全地讀取深度值
             self.distance = self.depth_image[self.center_y, self.center_x]
+            
+            # 檢查深度值是否有效（避免點到噪點或盲區，導致距離為 0）
+            if self.distance <= -0.03:
+                self.get_logger().warning("偵測到的中心點深度值為 0 (無效值)，跳過此次計算")
+                cv2.imshow("depth", self.depth_image)
+                cv2.waitKey(1)
+                return
         
         try:
             # 取得從 depth_camera 到 base_link 的轉換
-            transform = self.tf_buffer.lookup_transform('base_link', 'depth_camera', rclpy.time.Time())
+            # 由於使用深度相機資訊，建議使用 camera_depth_optical_frame (或 camera_color_optical_frame)
+            # transform = self.tf_buffer.lookup_transform('base_link', 'camera_depth_optical_frame', rclpy.time.Time())
+            transform = self.tf_buffer.lookup_transform('base_link', 'camera_color_optical_frame', rclpy.time.Time())
             # self.get_logger().info(f'Transform: {transform}')
         except TransformException as e:
             self.get_logger().error(f'Could not get transform: {e}')
@@ -95,32 +123,33 @@ class DepthSubscriber(Node):
 
         if self.k_received is not True:
             return
-        transform = self.tf_buffer.lookup_transform('base_link', 'depth_camera', rclpy.time.Time())
         
-        self.wheel_pose_msg.pose.position.y = -1 * (self.center_x - self.cx) * self.distance / self.fx  # 假設 k[0] 是焦距 fx k[2] 是主點 cx
+        # 光學座標系 (camera_optical_frame) 規定：
+        # X 軸朝右：(center_x - cx) * distance / fx
+        # Y 軸朝下：(center_y - cy) * distance / fy
+        # Z 軸朝前 (深度)：distance
+        self.wheel_pose_msg.position.x = self.distance
+        self.wheel_pose_msg.position.y = -1 * (self.center_x - self.cx) * self.distance / self.fx
+        self.wheel_pose_msg.position.z = -1 * (self.center_y - self.cy) * self.distance / self.fy
+        self.wheel_pose_msg.orientation.w = 1.0  # 確保 orientation 為有效的四元數
         
-        self.wheel_pose_msg.pose.position.z = -1 * (self.center_y - self.cy) * self.distance / self.fy  # 假設 k[4] 是焦距 fy k[5] 是主點 cy
-        self.wheel_pose_msg.pose.position.x = self.distance
+        # self.get_logger().info(f"深度相機座標 (相機光學系): {{:.3f}}, {{:.3f}}, {{:.3f}}".format(
+        #     self.wheel_pose_msg.position.x,
+        #     self.wheel_pose_msg.position.y,
+        #     self.wheel_pose_msg.position.z
+        # ))
         
-        self.wheel_pose = do_transform_pose(self.wheel_pose_msg.pose,transform)
+        self.wheel_pose = do_transform_pose(self.wheel_pose_msg, transform)
+        # self.get_logger().info(f"轉換前 (相機系): {self.wheel_pose_msg.pose.position}")
+        # self.get_logger().info(f"轉換後 (手臂系): {self.wheel_pose.position}")
         
         # self.get_logger().info(f"輪胎座標: {self.wheel_pose}")
 
         # self.get_logger().info(f'Distance: {self.distance}')
 
-        # 顯示深度影像（需要正規化）
-        # depth_display = cv2.normalize(
-        #     self.depth_image,
-        #     None,
-        #     0,
-        #     255,
-        #     cv2.NORM_MINMAX
-        # )
 
-        # depth_display = np.uint8(depth_display)
-
-        # cv2.imshow("depth", depth_display)
-        # cv2.waitKey(1)
+        cv2.imshow("depth", self.depth_image)
+        cv2.waitKey(1)
     
     def depth_info_timer_callback(self, msg):
         # 這裡可以解析深度相機的內部參數，例如焦距、主點等
@@ -134,12 +163,20 @@ class DepthSubscriber(Node):
             self.k_received = True
         # self.get_logger().info(f'Depth camera info received: {self.k}')
         
+        
     def camera_callback(self, msg):
+        
+        # if self.is_reponse_coord:
+        #     # 已經回應過座標了，就不再處理影像了
+        #     return
+        
         if not self.k_received:
+            self.get_logger().warning("等待深度相機資訊...")
             return
         camera_image = self.camera_bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         
-        self.wheel_results = self.model(camera_image, stream=True, conf=0.80, verbose=False)
+        
+        self.wheel_results = self.model(camera_image, stream=True, conf=0.60, verbose=False)
         
         # 等待深度圖像
         if self.depth_image is None:
@@ -166,16 +203,16 @@ class DepthSubscriber(Node):
             for box in boxes_data:
                 x1, y1, x2, y2, conf, cls = box
 
-                y_max_idx = max(0, min(int(y2), h - 1))
-                x_max_idx = max(0, min(int(x2), w - 1))
-                x_min_idx = max(0, min(int(x1), w - 1))
+                # y_max_idx = max(0, min(int(y2), h - 1))
+                # x_max_idx = max(0, min(int(x2), w - 1))
+                # x_min_idx = max(0, min(int(x1), w - 1))
 
-                xmax_z = self.depth_image[y_max_idx, x_max_idx]
-                xmin_z = self.depth_image[y_max_idx, x_min_idx]
+                # xmax_z = self.depth_image[y_max_idx, x_max_idx]
+                # xmin_z = self.depth_image[y_max_idx, x_min_idx]
 
-                real_width = (x2 * xmax_z - x1 * xmin_z) / self.fx
-                if real_width < 0.111:
-                    continue
+                # real_width = (x2 * xmax_z - x1 * xmin_z) / self.fx
+                # if real_width < 0.111:
+                #     continue
                 
                 if conf > self.best_conf:
                     self.best_conf = conf
@@ -183,6 +220,9 @@ class DepthSubscriber(Node):
 
         if self.best_box is None:
             self.wheel_results = None
+            # self.get_logger().info(f'best_box沒有')
+            cv2.imshow("camera", camera_image)
+            cv2.waitKey(1)
             return
 
         self.bbox = [int(self.best_box[0]), int(self.best_box[1]), int(self.best_box[2]), int(self.best_box[3])]
@@ -190,8 +230,8 @@ class DepthSubscriber(Node):
         # for r in wheel_results:
         #     annotated_frame = r.plot()
         
-        # cv2.imshow("camera", annotated)
-        # cv2.waitKey(1)
+        cv2.imshow("camera", annotated)
+        cv2.waitKey(1)
 
     def joint_state_callback(self, msg):
         # 這裡可以解析夾爪的關節狀態，例如開合程度等
@@ -212,15 +252,15 @@ class DepthSubscriber(Node):
             goal_wheel_pose.orientation.z = 0.0
             goal_wheel_pose.orientation.w = 0.0
             
-            goal_wheel_pose.position.x = self.wheel_pose.position.x
-            goal_wheel_pose.position.y = self.wheel_pose.position.y
+            goal_wheel_pose.position.x = self.wheel_pose.position.x + 0.035
+            goal_wheel_pose.position.y = self.wheel_pose.position.y - 0.02
 
-            goal_wheel_pose.position.z = self.wheel_pose.position.z
-            self.get_logger().info(f'實際： {self.wheel_pose}')
+            goal_wheel_pose.position.z = self.wheel_pose.position.z+0.025  # 在 z 軸上增加 3 公分的偏移，讓機械臂能夠更好地抓取輪 tire
+            # self.get_logger().info(f'實際： {self.wheel_pose}')
 
-            self.get_logger().info(f'輪胎座標；{goal_wheel_pose}')
+            # self.get_logger().info(f'輪胎座標；{goal_wheel_pose}')
             response.arm_cood = goal_wheel_pose
-
+            self.is_reponse_coord = True
             return response
         else:
             self.get_logger().error('Invalid request for arm coordinates')

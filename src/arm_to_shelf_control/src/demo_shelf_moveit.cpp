@@ -21,10 +21,26 @@ int main(int argc, char **argv)
 
     // 3. 設定目標位姿 (Target Pose)
     geometry_msgs::msg::Pose target_pose;
-    target_pose.orientation.w = 1.0; // 四元數 w=1 代表不旋轉
-    target_pose.position.x = 0.367;
+    /* 初始位置 */
+    /* target_pose.position.x = 0.367;
     target_pose.position.y = 0.000;
     target_pose.position.z = 0.287;
+    target_pose.orientation.x = 0.704;
+    target_pose.orientation.y = 0.704;
+    target_pose.orientation.z = 0.062;
+    target_pose.orientation.w = 0.062; */
+    /* 初始位置 2 for 深度相機 */
+    /* target_pose.position.x = 0.292;
+    target_pose.position.y = 0.000;
+    target_pose.position.z = 0.357;
+    target_pose.orientation.x = 0.704;
+    target_pose.orientation.y = 0.704;
+    target_pose.orientation.z = 0.062;
+    target_pose.orientation.w = 0.062; */
+    /* 目標位置 */
+    target_pose.position.x = 0.403;
+    target_pose.position.y = -0.034;
+    target_pose.position.z = 0.206;
     target_pose.orientation.x = 0.704;
     target_pose.orientation.y = 0.704;
     target_pose.orientation.z = 0.062;

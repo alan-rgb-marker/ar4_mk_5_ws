@@ -5,8 +5,21 @@ from ament_index_python.packages import get_package_share_directory
 from launch_param_builder import ParameterBuilder
 from moveit_configs_utils import MoveItConfigsBuilder
 
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
+
 
 def generate_launch_description():
+    
+    use_sim_time_arg = DeclareLaunchArgument(
+        "use_sim_time",
+        default_value="False",
+        description="Use simulation (Gazebo) clock if true"
+    )
+    
+    # 2. 取得該參數的配置物件
+    use_sim_time_config = LaunchConfiguration("use_sim_time")
+    
     moveit_config = (
         MoveItConfigsBuilder("ar4")
         .to_moveit_configs()
@@ -38,13 +51,14 @@ def generate_launch_description():
             moveit_config.robot_description_semantic,
             moveit_config.robot_description_kinematics,
             moveit_config.joint_limits,
-            {"use_sim_time": True},
+            {"use_sim_time": use_sim_time_config},
         ],
         output="screen",
     )
 
     return launch.LaunchDescription(
         [
+            use_sim_time_arg,
             servo_node,
         ]
     )

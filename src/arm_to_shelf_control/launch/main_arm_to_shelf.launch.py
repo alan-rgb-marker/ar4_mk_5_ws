@@ -14,14 +14,14 @@ def generate_launch_description():
     
     use_sim_time_arg = DeclareLaunchArgument(
             'use_sim_time',
-            default_value='True',
+            default_value='False',
             description='Use simulation time'
         )
 
     main_arm_to_shelf_control_node = Node(
         package='arm_to_shelf_control',
         executable='arm_to_shelf_control_node',
-        name='arm_to_shelf_control_node',
+        # name='arm_to_shelf_control_node',
         parameters=[{
                 'use_sim_time': use_sim_time_cfg
             }]
@@ -29,8 +29,8 @@ def generate_launch_description():
 
     shelf_pose_detect = Node(
         package='vision_yolo_depth',
-        executable='shelf_pose_detect',
-        name='shelf_pose_detect',
+        executable='main_service',
+        # name='shelf_pose_detect',
         parameters=[{
                 'use_sim_time': use_sim_time_cfg
             }]

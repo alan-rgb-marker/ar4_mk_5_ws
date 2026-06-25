@@ -36,7 +36,8 @@
       <sensor name="depth_camera" type="rgbd_camera">
         <update_rate>60</update_rate>
         <topic>camera</topic>
-        <gz_frame_id>depth_camera</gz_frame_id>
+        <!-- <gz_frame_id>depth_camera</gz_frame_id> -->
+        <gz_frame_id>camera_color_optical_frame</gz_frame_id>
         <always_on>true</always_on>
         <visualize>true</visualize>
         <camera>

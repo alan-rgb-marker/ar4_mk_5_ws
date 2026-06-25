@@ -68,18 +68,10 @@ std::vector<hardware_interface::CommandInterface> ARSwitchGripperHWInterface::ex
 hardware_interface::return_type ARSwitchGripperHWInterface::read(
     const rclcpp::Time& /*time*/,
     const rclcpp::Duration& /*period*/) {
-  // RCLCPP_INFO(logger_, "Reading gripper state from hardware...");
-
-  bool state = driver_.getGripperState();
-  double j1_pos = (state == true) ? 0.4886 : 0.01;
-
+  // Directly report the commanded position as the current position.
+  // This prevents GripperActionController from waiting indefinitely and timing out.
   for (size_t i = 0; i < info_.joints.size(); ++i) {
-    // 三隻夾爪其中一隻應該要反向
-    // if (info_.joints[i].name == "grip_to_base2") {
-      // positions_[i] = -j1_pos;
-    // } else {
-      positions_[i] = j1_pos;
-    // }
+    positions_[i] = position_command_;
     velocities_[i] = 0.0;
   }
 

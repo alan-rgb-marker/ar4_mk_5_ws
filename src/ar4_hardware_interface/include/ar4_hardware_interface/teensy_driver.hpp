@@ -34,6 +34,11 @@ private:
   rclcpp::Logger logger_ = rclcpp::get_logger("teensy_driver");
   rclcpp::Clock clock_ = rclcpp::Clock(RCL_ROS_TIME);
 
+  std::string port_;
+  int baudrate_;
+  std::chrono::steady_clock::time_point last_reconnect_time_;
+  bool tryReconnect();
+
   // Comms with teensy
   void exchange(std::string outMsg);  // exchange joint commands/state
   bool transmit(std::string outMsg, std::string& err);
