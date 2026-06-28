@@ -18,7 +18,7 @@ class YoloDetector(Node):
         self.bridge = CvBridge()
 
         # 載入模型
-        self.model = YOLO("/home/alan/Moveit2/ar4_mk_5_ws/src/vision_yolo_depth/yolo/real_shelf_best.pt")
+        self.model = YOLO("/home/alan/Moveit2/ar4_mk_5_ws/src/vision_yolo_depth/yolo/real_shelf_pose_one_point_best.pt")
 
         # 訂閱相機
         self.image_sub = self.create_subscription(

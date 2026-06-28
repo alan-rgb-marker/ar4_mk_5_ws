@@ -42,6 +42,9 @@ private:
 
     // joint_model_group 改為指標，延後初始化
     const moveit::core::JointModelGroup *joint_model_group = nullptr;
+    
+    // rate 改為指標，延後初始化
+    std::unique_ptr<rclcpp::WallRate> rate = nullptr;
 
     std::deque<moveit_servo::KinematicState> joint_cmd_rolling_window;
 
@@ -49,14 +52,11 @@ private:
 
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr update_robot_state_sub;
 
-    moveit::core::RobotStatePtr robot_state_;
-
-    rclcpp::WallRate rate;
+    moveit::core::RobotStatePtr robot_state_ = nullptr;
 };
 
 moveit_servo_service::moveit_servo_service()
-    : Node("moveit_servo_twist_control_node"),
-      rate(1.0 / servo_params.publish_period)
+    : Node("moveit_servo_twist_control_node")
 {
     // 建構子只做最基本的事，不呼叫 shared_from_this()
 }
@@ -80,11 +80,26 @@ void moveit_servo_service::init_moveit_servo()
 
     // 步驟 4：從 PlanningSceneMonitor 取得 robot_state，初始化 joint_model_group
     auto robot_state = planning_scene_monitor->getStateMonitor()->getCurrentState();
+    if (!robot_state)
+    {
+        RCLCPP_ERROR(get_logger(), "無法取得 robot_state");
+        return;
+    }
+    
+    robot_state_ = robot_state;  // 保存 robot_state
     joint_model_group = robot_state->getJointModelGroup(servo_params.move_group_name);
+    if (!joint_model_group)
+    {
+        RCLCPP_ERROR(get_logger(), "無法取得 joint_model_group: %s", servo_params.move_group_name.c_str());
+        return;
+    }
 
     moveit_servo::KinematicState current_state = servo_->getCurrentRobotState(true);
     updateSlidingWindow(current_state, joint_cmd_rolling_window,
                         servo_params.max_expected_latency, this->now());
+    
+    // 初始化 rate（必須在 servo_params 取得後）
+    rate = std::make_unique<rclcpp::WallRate>(1.0 / servo_params.publish_period);
 
     // 步驟 5：建立 publisher 和 subscriber
     trajectory_outgoing_cmd_pub =
@@ -103,6 +118,12 @@ void moveit_servo_service::init_moveit_servo()
 void moveit_servo_service::moveit_servo_callback(
     const geometry_msgs::msg::TwistStamped::SharedPtr msg)
 {
+    // 檢查必要的指標是否已初始化
+    if (!robot_state_ || !joint_model_group || !servo_ || !rate)
+    {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Servo 未完全初始化，跳過此幀");
+        return;
+    }
 
     moveit_servo::TwistCommand twist_cmd = {
         msg->header.frame_id,
@@ -110,7 +131,7 @@ void moveit_servo_service::moveit_servo_callback(
          msg->twist.angular.x, msg->twist.angular.y, msg->twist.angular.z}};
 
     moveit_servo::KinematicState joint_state =
-        servo_->getNextJointState(this->robot_state_, twist_cmd);
+        servo_->getNextJointState(robot_state_, twist_cmd);
     const moveit_servo::StatusCode status = servo_->getStatus();
 
     if (status != moveit_servo::StatusCode::INVALID)
@@ -123,15 +144,15 @@ void moveit_servo_service::moveit_servo_callback(
             trajectory_outgoing_cmd_pub->publish(traj_msg.value());
         }
 
-        if (!joint_cmd_rolling_window.empty())
+        if (!joint_cmd_rolling_window.empty() && joint_model_group)
         {
-            this->robot_state_->setJointGroupPositions(
+            robot_state_->setJointGroupPositions(
                 joint_model_group, joint_cmd_rolling_window.back().positions);
-            this->robot_state_->setJointGroupVelocities(
+            robot_state_->setJointGroupVelocities(
                 joint_model_group, joint_cmd_rolling_window.back().velocities);
         }
     }
-    rate.sleep();
+    rate->sleep();
 }
 
 void moveit_servo_service::update_robot_state_callback(const std_msgs::msg::Bool msg)
@@ -139,8 +160,21 @@ void moveit_servo_service::update_robot_state_callback(const std_msgs::msg::Bool
     if (msg.data != true)
         return;
 
-    this->robot_state_ = this->planning_scene_monitor->getStateMonitor()->getCurrentState();
-    RCLCPP_INFO(this->get_logger(), "已經更新機器人狀態");
+    if (!planning_scene_monitor || !planning_scene_monitor->getStateMonitor())
+    {
+        RCLCPP_ERROR(get_logger(), "planning_scene_monitor 未初始化");
+        return;
+    }
+    
+    auto new_state = planning_scene_monitor->getStateMonitor()->getCurrentState();
+    if (!new_state)
+    {
+        RCLCPP_ERROR(get_logger(), "無法取得 robot_state");
+        return;
+    }
+    
+    robot_state_ = new_state;
+    RCLCPP_INFO(get_logger(), "已經更新機器人狀態");
 }
 
 int main(int argc, char **argv)

@@ -31,6 +31,8 @@ setup(
             'demo_yolo = vision_yolo_depth.demo_yolo:main',
             'demo_shelf_pose_detect_with_yolo = vision_yolo_depth.demo_shelf_pose_detect_with_yolo:main',
             'main_service = vision_yolo_depth.main_service:main',
+            'detect_wheel_from_shelf = vision_yolo_depth.detect_wheel_from_shelf:main',
+            'demo_wheel_detect = vision_yolo_depth.demo_wheel_detect:main',
         ],
     },
 )

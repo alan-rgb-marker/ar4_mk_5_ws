@@ -3,13 +3,28 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include <std_srvs/srv/trigger.hpp>
 #include <vision_interfaces/srv/armcoodinate.hpp>
+#include <functional>
 
 using namespace std::chrono_literals;
 
 class PickAndPlaceNode : public rclcpp::Node
 {
 public:
-    PickAndPlaceNode() : Node("pick_and_place_node") {}
+    PickAndPlaceNode() : Node("pick_and_place_node") {
+        this->start_run_service_ = this->create_service<std_srvs::srv::Trigger>("start_run_service", std::bind(&PickAndPlaceNode::run_callback, this, std::placeholders::_1, std::placeholders::_2));
+    }
+
+    void run_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> request, std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+    {
+        (void)request; // 目前沒有使用 request 的內容，可以先這樣避免編譯警告
+        RCLCPP_INFO(this->get_logger(), "Received run command, starting the process...");
+        std::thread([this]()
+                    { this->run(); })
+            .detach();
+
+        response->success = true;
+        response->message = "Process completed successfully.";
+    }
 
     void run()
     {
@@ -63,9 +78,10 @@ public:
         auto future_reponse = client->async_send_request(get_wheel_request);
 
         geometry_msgs::msg::Pose grasp_pose = future_reponse.get()->arm_cood; // ← 欄位名你自己改
+        grasp_pose.position.z = 0.008;
 
-        // grasp_pose.position.x -= 0.032; // ← 因為深度相機和相機同步深度相機自動放大兩倍
-        // grasp_pose.position.y /= 2; // ← 因為深度相機和相機同步深度相機自動放大兩倍
+        grasp_pose.position.x -= 0.01; // ← 因為深度相機和相機同步深度相機自動放大兩倍
+        grasp_pose.position.y += 0.01; // ← 因為深度相機和相機同步深度相機自動放大兩倍
 
         RCLCPP_INFO(get_logger(), "Grasp pose: (%.3f, %.3f, %.3f)",
                     grasp_pose.position.x,
@@ -95,10 +111,10 @@ public:
             return;
 
         // ── Step 7：回到原點 ──────────────────────────────────────
-        RCLCPP_INFO(get_logger(), "Step 7: Returning to ready...");
-        arm->setNamedTarget("ready");
-        if (!planAndExecute(arm, "return to ready"))
-            return;
+        // RCLCPP_INFO(get_logger(), "Step 7: Returning to ready...");
+        // arm->setNamedTarget("ready");
+        // if (!planAndExecute(arm, "return to ready"))
+        //     return;
 
         RCLCPP_INFO(this->get_logger(), "Step 8: request shelf");
         auto shelf_client = create_client<std_srvs::srv::Trigger>("run_service");
@@ -137,22 +153,34 @@ private:
         RCLCPP_INFO(get_logger(), "[OK] %s", label.c_str());
         return true;
     }
+
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr start_run_service_;
 };
 
 int main(int argc, char **argv)
 {
     rclcpp::init(argc, argv);
+
+    // 1. 建立節點實例
     auto node = std::make_shared<PickAndPlaceNode>();
 
-    rclcpp::executors::SingleThreadedExecutor executor;
-    executor.add_node(node);
-
-    std::thread run_thread([&node]()
-                           { node->run(); });
-
-    executor.spin();
-    run_thread.join();
+    rclcpp::spin(node);
 
     rclcpp::shutdown();
     return 0;
+
+    // rclcpp::init(argc, argv);
+    // auto node = std::make_shared<PickAndPlaceNode>();
+
+    // rclcpp::executors::SingleThreadedExecutor executor;
+    // executor.add_node(node);
+
+    // std::thread run_thread([&node]()
+                        //    { node->run(); });
+
+    // executor.spin();
+    // run_thread.join();
+
+    // rclcpp::shutdown();
+    // return 0;
 }

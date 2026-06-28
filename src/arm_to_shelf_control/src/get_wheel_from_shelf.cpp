@@ -1,11 +1,14 @@
 #include <rclcpp/rclcpp.hpp>
+// 順手將 .h 改為 ROS 2 現代化的 .hpp 標頭檔
 #include <moveit/move_group_interface/move_group_interface.hpp>
 #include <moveit/planning_scene_interface/planning_scene_interface.hpp>
-#include <geometry_msgs/msg/pose.hpp>
-#include <geometry_msgs/msg/twist_stamped.hpp>
+#include <moveit_servo/servo.hpp>
+#include <moveit_servo/utils/command.hpp>
+#include <geometry_msgs/msg/pose.hpp> // 補上遺漏的標頭檔
 #include <std_srvs/srv/trigger.hpp>
 #include <vision_interfaces/srv/armcoodinate.hpp>
 #include <vision_interfaces/srv/shelf_coodinate.hpp>
+#include <vision_interfaces/srv/twist_moveit_servo.hpp>
 #include <std_msgs/msg/bool.hpp>
 
 #include <thread>
@@ -15,9 +18,12 @@
 #include <cmath>
 
 using namespace std::chrono_literals;
+using namespace moveit_servo;
 
 static const std::string ARM_GROUP = "arm";
 static const std::string GRIPPER_GROUP = "gripper";
+
+const unsigned int WHEEL_QUANTITY = 4;
 
 // -----------------------------------------------------------------------
 // 放置目標高度（base_link frame，單位公尺）
@@ -26,8 +32,8 @@ static const std::string GRIPPER_GROUP = "gripper";
 static constexpr double LIFT_TARGET_Z = 0.35; // ← 依實際需求調整
 
 // Servo 速度參數
-static constexpr double SERVO_Y_VEL = 0.02; // 跟隨輪胎 Y 方向（會從 shelf_vel 覆蓋）
-static constexpr double SERVO_Z_VEL = 0.03; // 向上提升速度 (m/s)
+static constexpr double SERVO_Y_VEL = 0.011; // 跟隨輪胎 Y 方向（會從 shelf_vel 覆蓋）
+static constexpr double SERVO_Z_VEL = 0.05;  // 向上提升速度 (m/s)
 
 class ArmToWheelControl : public rclcpp::Node
 {
@@ -45,13 +51,15 @@ private:
     rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr servo_pub_;
 
     // ── MoveIt 介面 ───────────────────────────────────────────────────
-    std::unique_ptr<moveit::planning_interface::MoveGroupInterface> move_group_;
-    std::unique_ptr<moveit::planning_interface::MoveGroupInterface> gripper_group_;
+    std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_;
+    std::shared_ptr<moveit::planning_interface::MoveGroupInterface> gripper_group_;
 
     // ── 狀態資料 ──────────────────────────────────────────────────────
     double wheel_vel_y_ = 0.0;        // 輪胎 Y 軸速度 (m/s)
     rclcpp::Time wheel_feature_time_; // 輪胎座標對應的時間戳
     rclcpp::Duration elapsed_time_{0, 0};
+
+    unsigned int ct;
 
     // ── 流水線步驟 ────────────────────────────────────────────────────
     void run();
@@ -70,11 +78,20 @@ private:
     // 步驟 4：Servo 等速 Y 跟隨 + Z 向上，直到目標高度
     void step4_servo_lift();
 
+    // 步驟 5：回到原點
+    void step5_return_to_home();
+
+    // 步驟 6：從頭開始訊號
+    void step6_restart();
+
     // ── 底層工具 ──────────────────────────────────────────────────────
     bool arm_planner(geometry_msgs::msg::Pose &target_pose,
                      const std::string &state = "normal",
                      double cli_used_time = 0.0);
     bool gripper_planner(const std::string &target = "close");
+    bool planAndExecute(
+        const std::shared_ptr<moveit::planning_interface::MoveGroupInterface> &group,
+        const std::string &label);
 };
 
 // =======================================================================
@@ -94,10 +111,10 @@ int main(int argc, char **argv)
 // 建構子
 // =======================================================================
 ArmToWheelControl::ArmToWheelControl()
-    : Node("arm_to_wheel_control"), elapsed_time_(0, 0)
+    : Node("arm_to_wheel_control"), elapsed_time_(0, 0), ct(0)
 {
-    view_coord_cli_ = create_client<vision_interfaces::srv::Armcoodinate>("view_shelf_coord");
-    wheel_coord_cli_ = create_client<vision_interfaces::srv::ShelfCoodinate>("shelf_coord");
+    view_coord_cli_ = create_client<vision_interfaces::srv::Armcoodinate>("view_wheel_on_shelf_coord");
+    wheel_coord_cli_ = create_client<vision_interfaces::srv::ShelfCoodinate>("wheel_coord_on_shelf");
     servo_pub_ = create_publisher<geometry_msgs::msg::TwistStamped>("delta_twist_cmds", 10);
 
     trigger_srv_ = create_service<std_srvs::srv::Trigger>(
@@ -161,6 +178,12 @@ void ArmToWheelControl::run()
     RCLCPP_INFO(get_logger(), "=== 步驟 4：Servo 跟隨 Y 軸 + Z 軸向上提起 ===");
     step4_servo_lift();
 
+    RCLCPP_INFO(get_logger(), "=== 步驟 5：回到原點 ===");
+    step5_return_to_home();
+
+    RCLCPP_INFO(get_logger(), "=== 步驟 6：發送從頭開始訊號 ===");
+    step6_restart();
+
     RCLCPP_INFO(get_logger(), "=== 流水線完成 ===");
 }
 
@@ -170,6 +193,10 @@ void ArmToWheelControl::run()
 // =======================================================================
 void ArmToWheelControl::step1_move_to_observe()
 {
+    gripper_planner("open");
+
+    std::this_thread::sleep_for(9s);
+
     // 等待服務上線
     while (!view_coord_cli_->wait_for_service(1s))
     {
@@ -188,6 +215,8 @@ void ArmToWheelControl::step1_move_to_observe()
     auto res = future.get();
 
     arm_planner(res->arm_cood);
+    std::this_thread::sleep_for(1s); // 等待一秒確保手臂到位
+
     RCLCPP_INFO(get_logger(), "步驟 1 完成：已到達觀測位置");
 }
 
@@ -199,7 +228,7 @@ void ArmToWheelControl::step1_move_to_observe()
 // =======================================================================
 void ArmToWheelControl::step2_move_to_wheel_future_pose()
 {
-    while (!wheel_coord_cli_->wait_for_service(1s))
+    while (!wheel_coord_cli_->wait_for_service())
     {
         if (!rclcpp::ok())
         {
@@ -210,7 +239,7 @@ void ArmToWheelControl::step2_move_to_wheel_future_pose()
     }
 
     auto req = std::make_shared<vision_interfaces::srv::ShelfCoodinate::Request>();
-    req->req_cmd = "get_wheel_from_shelf_coord";
+    req->req_cmd = "get_wheel_coord";
 
     auto future = wheel_coord_cli_->async_send_request(req);
     auto res = future.get();
@@ -219,7 +248,14 @@ void ArmToWheelControl::step2_move_to_wheel_future_pose()
     wheel_feature_time_ = rclcpp::Time(res->start_pos_time);
     wheel_vel_y_ = res->shelf_vel; // 輪胎 Y 軸速度 (m/s)，正負代表方向
 
+    if (wheel_vel_y_ > 0.1)
+        wheel_vel_y_ = 0.1;
+
     geometry_msgs::msg::Pose target_pose = res->shelf_pose;
+    target_pose.orientation.x = 0.704;
+    target_pose.orientation.y = 0.704;
+    target_pose.orientation.z = 0.062;
+    target_pose.orientation.w = 0.062;
 
     // 記錄服務呼叫耗時（用來補償延遲）
     rclcpp::Time end_cli = now();
@@ -257,50 +293,108 @@ void ArmToWheelControl::step3_grip_wheel()
 // =======================================================================
 void ArmToWheelControl::step4_servo_lift()
 {
-    geometry_msgs::msg::TwistStamped twist;
-    twist.header.frame_id = "base_link";
-    twist.twist.linear.x = 0.0;
-    twist.twist.linear.y = wheel_vel_y_; // 跟隨輪胎
-    twist.twist.linear.z = SERVO_Z_VEL;  // 向上
-    twist.twist.angular.x = 0.0;
-    twist.twist.angular.y = 0.0;
-    twist.twist.angular.z = 0.0;
 
-    constexpr double PUBLISH_RATE_HZ = 50.0;
-    rclcpp::Rate rate(PUBLISH_RATE_HZ);
+    auto reset_pub = this->create_publisher<std_msgs::msg::Bool>("update_robot_state", rclcpp::SystemDefaultsQoS());
+    std_msgs::msg::Bool reset_msg;
+    reset_msg.data = true;
+    reset_pub->publish(reset_msg);
+
+    geometry_msgs::msg::TwistStamped twist_pub;
+    twist_pub.header.frame_id = "base_link";
+    twist_pub.twist.linear.x = 0.0;
+    twist_pub.twist.linear.y = wheel_vel_y_; // 跟隨輪胎
+    twist_pub.twist.linear.z = SERVO_Z_VEL;  // 向上
+    twist_pub.twist.angular.x = 0.0;
+    twist_pub.twist.angular.y = 0.0;
+    twist_pub.twist.angular.z = 0.0;
 
     RCLCPP_INFO(get_logger(), "開始 Servo 提升，目標 Z: %.3f m", LIFT_TARGET_Z);
+    geometry_msgs::msg::PoseStamped init_pose = this->move_group_->getCurrentPose("gripper_tcp");
+    geometry_msgs::msg::PoseStamped current_pose = this->move_group_->getCurrentPose("gripper_tcp");
 
-    while (rclcpp::ok())
+    RCLCPP_INFO(get_logger(), "初始 TCP Z: %.3f m, X: %.3f m", init_pose.pose.position.z, init_pose.pose.position.x);
+    RCLCPP_INFO(get_logger(), "初始 TCP X: %.3f m, Z: %.3f m", init_pose.pose.position.x, init_pose.pose.position.z);
+
+    while ((fabs(init_pose.pose.position.z - current_pose.pose.position.z) <= 0.05 * cos(10.0 * M_PI / 180.0)))
     {
-        geometry_msgs::msg::PoseStamped current = move_group_->getCurrentPose("gripper_tcp");
-        double current_z = current.pose.position.z;
-
-        if (current_z >= LIFT_TARGET_Z)
-        {
-            RCLCPP_INFO(get_logger(), "已到達目標高度 Z=%.3f，停止 Servo", current_z);
-            break;
-        }
-
-        // 接近目標時減速，避免超衝（進入最後 2 cm 時減半速）
-        double remaining = LIFT_TARGET_Z - current_z;
-        if (remaining < 0.02)
-            twist.twist.linear.z = SERVO_Z_VEL * 0.5;
-        else
-            twist.twist.linear.z = SERVO_Z_VEL;
-
-        twist.header.stamp = now();
-        servo_pub_->publish(twist);
-        rate.sleep();
+        this->servo_pub_->publish(twist_pub);
+        current_pose = this->move_group_->getCurrentPose("gripper_tcp");
+        // RCLCPP_INFO(this->get_logger(), "發布twist x: %f ", twist_pub.twist.linear.x);
+        // RCLCPP_INFO(this->get_logger(), "發布twist y: %f ", twist_pub.twist.linear.y);
+        // RCLCPP_INFO(this->get_logger(), "發布twist z: %f ", twist_pub.twist.linear.z);
+        // auto offset_z = (fabs(init_pose.pose.position.x - current_pose.pose.position.x) <= 0.05 * sin(10.0 * M_PI / 180.0));
+        // auto offset_x = (fabs(init_pose.pose.position.z - current_pose.pose.position.z) <= 0.05 * cos(10.0 * M_PI / 180.0));
+        // RCLCPP_INFO(this->get_logger(), "offset_z: %f, offset_x: %f", offset_z, offset_x);
+        // RCLCPP_INFO(get_logger(), "狀態 TCP X: %.3f m, Z: %.3f m", current_pose.pose.position.x, current_pose.pose.position.z);
+        // RCLCPP_INFO(get_logger(), "初始 TCP X: %.3f m, Z: %.3f m", init_pose.pose.position.x, init_pose.pose.position.z);
     }
-
-    // 發一個全零 twist 讓 Servo 停止
-    geometry_msgs::msg::TwistStamped stop_twist;
-    stop_twist.header.frame_id = "base_link";
-    stop_twist.header.stamp = now();
-    servo_pub_->publish(stop_twist);
+    std::this_thread::sleep_for(1s); // 休息 100ms，避免 CPU 過度負荷
 
     RCLCPP_INFO(get_logger(), "步驟 4 完成：輪胎已提升到目標高度");
+}
+
+void ArmToWheelControl::step5_return_to_home()
+{
+    geometry_msgs::msg::Pose wheel_place;
+    wheel_place.position.x = 0.116;
+    wheel_place.position.y = -0.363;
+    wheel_place.position.z = 0.0;
+    wheel_place.orientation.x = 0.988;
+    wheel_place.orientation.y = 0.154;
+    wheel_place.orientation.z = 0.0;
+    wheel_place.orientation.w = 0.0;
+
+    arm_planner(wheel_place);
+
+    gripper_planner("open");
+
+    wheel_place.position.z += 0.05;
+
+    arm_planner(wheel_place);
+
+    this->move_group_->setNamedTarget("ready");
+    if (!planAndExecute(this->move_group_, "return to ready"))
+        return;
+
+    gripper_planner();
+    this->ct++;
+}
+
+void ArmToWheelControl::step6_restart()
+{
+    if (this->ct >= WHEEL_QUANTITY)
+    {
+        this->ct = 0;
+        RCLCPP_INFO(this->get_logger(), "下一輪不會再執行");
+        return;
+    }
+    std::this_thread::sleep_for(8s);
+    auto reset_next_service_client = this->create_client<std_srvs::srv::Trigger>("reset_all_states");
+    auto reset_next_service_request = std::make_shared<std_srvs::srv::Trigger::Request>();
+    while (!reset_next_service_client->wait_for_service(1s))
+    {
+        if (!rclcpp::ok())
+        {
+            RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
+            return;
+        }
+        RCLCPP_INFO(this->get_logger(), "next_service not available, waiting again...");
+    }
+    auto reset_next_service_response = reset_next_service_client->async_send_request(reset_next_service_request);
+
+    auto next_service_client = this->create_client<std_srvs::srv::Trigger>("start_run_service");
+    auto next_service_request = std::make_shared<std_srvs::srv::Trigger::Request>();
+    while (!next_service_client->wait_for_service(1s))
+    {
+        if (!rclcpp::ok())
+        {
+            RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
+            return;
+        }
+        RCLCPP_INFO(this->get_logger(), "next_service not available, waiting again...");
+    }
+    auto next_service_response = next_service_client->async_send_request(next_service_request);
+    RCLCPP_INFO(this->get_logger(), "已經完成整個流程，並從頭開始");
 }
 
 // =======================================================================
@@ -347,7 +441,9 @@ bool ArmToWheelControl::arm_planner(geometry_msgs::msg::Pose &target_pose,
         RCLCPP_INFO(get_logger(), "總補償時間 t=%.3f s", t);
 
         double dy = wheel_vel_y_ * t; // 輪胎在 t 秒後的 Y 位移
-        target_pose.position.y += dy;
+        target_pose.position.y += (dy + 0.04*1);
+        // target_pose.position.y += dy;
+        target_pose.position.z += (0.01);
         wheel_feature_time_ += rclcpp::Duration::from_seconds(t);
 
         RCLCPP_INFO(get_logger(), "目標 Y 補償後: %.4f m（補償 dy=%.4f m）",
@@ -383,5 +479,24 @@ bool ArmToWheelControl::gripper_planner(const std::string &target)
     }
 
     gripper_group_->execute(plan);
+    return true;
+}
+
+bool ArmToWheelControl::planAndExecute(
+    const std::shared_ptr<moveit::planning_interface::MoveGroupInterface> &group,
+    const std::string &label)
+{
+    moveit::planning_interface::MoveGroupInterface::Plan plan;
+    if (group->plan(plan) != moveit::core::MoveItErrorCode::SUCCESS)
+    {
+        RCLCPP_ERROR(get_logger(), "[FAIL] Planning: %s", label.c_str());
+        return false;
+    }
+    if (group->execute(plan) != moveit::core::MoveItErrorCode::SUCCESS)
+    {
+        RCLCPP_ERROR(get_logger(), "[FAIL] Execution: %s", label.c_str());
+        return false;
+    }
+    RCLCPP_INFO(get_logger(), "[OK] %s", label.c_str());
     return true;
 }

@@ -38,9 +38,9 @@ int main(int argc, char **argv)
     target_pose.orientation.z = 0.062;
     target_pose.orientation.w = 0.062; */
     /* 目標位置 */
-    target_pose.position.x = 0.403;
-    target_pose.position.y = -0.034;
-    target_pose.position.z = 0.206;
+    target_pose.position.x = 0.3;
+    target_pose.position.y = -0.0102;
+    target_pose.position.z = 0.4;
     target_pose.orientation.x = 0.704;
     target_pose.orientation.y = 0.704;
     target_pose.orientation.z = 0.062;

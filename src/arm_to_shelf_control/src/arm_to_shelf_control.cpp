@@ -94,7 +94,7 @@ void arm_to_shelf_control::run()
     // ---------------- 第一步執行到看架子的點------------------
 
     std::this_thread::sleep_for(3s); // 等待一秒確保 python端可以偵測到shelf pose 已經完成動作
-    
+
     move_to_shelf_pose();
     auto reset_pub = this->create_publisher<std_msgs::msg::Bool>("update_robot_state", rclcpp::SystemDefaultsQoS());
     std_msgs::msg::Bool reset_msg;
@@ -139,7 +139,7 @@ void arm_to_shelf_control::run()
     twist_req.header.frame_id = "base_link";
     twist_req.twist.linear.x = -1 * abs(0.02 * sin(10.0 * M_PI / 180)); // 沿 X 軸
     twist_req.twist.linear.y = shelf_vel;                               // 沿 Y 軸
-    twist_req.twist.linear.z = abs(0.02 * cos(10.0 * M_PI / 180));      // 沿 Z 軸
+    twist_req.twist.linear.z = 0.05;                                    // 沿 Z 軸
     twist_req.twist.angular.x = 0.0;                                    // 沿 X 軸
     twist_req.twist.angular.y = 0.0;                                    // 沿 Y 軸
     twist_req.twist.angular.z = 0.0;                                    // 沿 Z 軸
@@ -158,7 +158,34 @@ void arm_to_shelf_control::run()
     origin_pose.orientation.z = 0.000;
     origin_pose.orientation.w = 0.000;
     arm_planner(origin_pose); // 最後回到初始位置
-    gripper_planner("close"); // 最後回到初始位置
+
+    // call下一個service訊號給下一個程式
+    auto reset_next_service_client = this->create_client<std_srvs::srv::Trigger>("reset_wheel_from_shelf");
+    auto reset_next_service_request = std::make_shared<std_srvs::srv::Trigger::Request>();
+    while (!reset_next_service_client->wait_for_service(1s))
+    {
+        if (!rclcpp::ok())
+        {
+            RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
+            return;
+        }
+        RCLCPP_INFO(this->get_logger(), "reset not available, waiting again...");
+    }
+    auto reset_next_service_response = reset_next_service_client->async_send_request(reset_next_service_request);
+
+    auto next_service_client = this->create_client<std_srvs::srv::Trigger>("run_wheel_service");
+    auto next_service_request = std::make_shared<std_srvs::srv::Trigger::Request>();
+    while (!next_service_client->wait_for_service(1s))
+    {
+        if (!rclcpp::ok())
+        {
+            RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
+            return;
+        }
+        RCLCPP_INFO(this->get_logger(), "next_service not available, waiting again...");
+    }
+    auto next_service_response = next_service_client->async_send_request(next_service_request);
+    RCLCPP_INFO(this->get_logger(), "已經完成整個流程，並開始把輪子從架子拿下來");
 }
 
 void arm_to_shelf_control::run_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> request, std::shared_ptr<std_srvs::srv::Trigger::Response> response)
@@ -216,7 +243,7 @@ void arm_to_shelf_control::move_to_shelf_pose()
     RCLCPP_INFO(this->get_logger(), "測試點");
     auto shelf_coord_reponse = shelf_coord_client_->async_send_request(shelf_coord_request);
     RCLCPP_INFO(this->get_logger(), "測試點 1");
-    
+
     auto response = shelf_coord_reponse.get();
     RCLCPP_INFO(this->get_logger(), "測試點 2");
 
@@ -226,9 +253,14 @@ void arm_to_shelf_control::move_to_shelf_pose()
     shelf_vel = response->shelf_vel;
     geometry_msgs::msg::Pose shelf_pose = response->shelf_pose;
     // shelf_pose.position.x -= (0.02 * std::sin(10 * 3.14159 / 180)); // 往前修正1cm 避免撞到架子
-    shelf_pose.position.x += 0.0015; // 往前修正1cm 避免撞到架子
-    shelf_pose.position.y -= -1 * (shelf_vel / abs(shelf_vel)) * 0.0;                        // 往後修正1cm 避免撞到架子
-    shelf_pose.position.z += (0.03 * std::cos(10 * 3.14159 / 180)); // 往上修正1cm 避免撞到架子
+
+    shelf_pose.position.x -= 0.005; // 往前修正1cm 避免撞到架子
+    // shelf_pose.position.y += 0.0;                        // 往後修正1cm 避免撞到架子
+    shelf_pose.position.z += 0.047; // 往上修正1cm 避免撞到架子
+
+    RCLCPP_INFO(this->get_logger(), "架子初始座標 X：%f", shelf_pose.position.x);
+    RCLCPP_INFO(this->get_logger(), "架子初始座標 Y：%f", shelf_pose.position.y);
+    RCLCPP_INFO(this->get_logger(), "架子初始座標 Z：%f", shelf_pose.position.z);
 
     rclcpp::Time end_cli = this->now();
 
@@ -254,6 +286,7 @@ bool arm_to_shelf_control::arm_planner(geometry_msgs::msg::Pose &target_pose, st
     }
     else if (state == "feature_postion")
     {
+
         this->move_group_->setPoseTarget(target_pose);
         bool succes = (this->move_group_->plan(arm_plan) == moveit::core::MoveItErrorCode::SUCCESS);
 
@@ -286,14 +319,16 @@ bool arm_to_shelf_control::arm_planner(geometry_msgs::msg::Pose &target_pose, st
         const double position_offset = 0.5; // 要往後一秒鐘避免撞機
         double t = plan_time * 2 + move_time + abs(cli_used_time) + position_offset;
         RCLCPP_INFO(this->get_logger(), "總時間：%f", t);
-        double shelf_move_distance = this->shelf_vel * t - 0.01; // 單位公尺
+        double shelf_move_distance = this->shelf_vel * t; // 單位公尺
 
         this->shelf_feature_time += rclcpp::Duration::from_seconds(t);
         target_pose.position.y += shelf_move_distance;
 
-        // RCLCPP_INFO(this->get_logger(), "手臂目標座標 X：%f", target_pose.position.x);
-        // RCLCPP_INFO(this->get_logger(), "手臂目標座標 Y：%f", target_pose.position.y);
-        // RCLCPP_INFO(this->get_logger(), "手臂目標座標 Z：%f", target_pose.position.z);
+        target_pose.position.y += (0.027 * 2);
+
+        RCLCPP_INFO(this->get_logger(), "手臂目標座標 X：%f", target_pose.position.x);
+        RCLCPP_INFO(this->get_logger(), "手臂目標座標 Y：%f", target_pose.position.y);
+        RCLCPP_INFO(this->get_logger(), "手臂目標座標 Z：%f", target_pose.position.z);
 
         this->move_group_->setPoseTarget(target_pose);
         succes = (this->move_group_->plan(arm_plan) == moveit::core::MoveItErrorCode::SUCCESS);
@@ -356,8 +391,8 @@ bool arm_to_shelf_control::moveit_servo_move(geometry_msgs::msg::TwistStamped &t
     }
     else if (status == "quit")
     {
-        while ((fabs(init_pose.pose.position.x - current_pose.pose.position.x) <= 0.05 * sin(10.0 * M_PI / 180.0)) ||
-               (fabs(init_pose.pose.position.z - current_pose.pose.position.z) <= 0.05 * cos(10.0 * M_PI / 180.0)))
+        while ((fabs(init_pose.pose.position.x - current_pose.pose.position.x) <= 0.04 * sin(10.0 * M_PI / 180.0)) ||
+               (fabs(init_pose.pose.position.z - current_pose.pose.position.z) <= 0.04 * cos(10.0 * M_PI / 180.0)))
         {
             this->moveit_servo_publisher_->publish(twist_pub);
             current_pose = this->move_group_->getCurrentPose("gripper_tcp");

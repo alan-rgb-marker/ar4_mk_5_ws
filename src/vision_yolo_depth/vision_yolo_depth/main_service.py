@@ -5,6 +5,7 @@ from geometry_msgs.msg import PoseStamped, Pose, PointStamped
 from tf2_geometry_msgs import do_transform_pose
 from tf2_ros import Buffer, TransformListener, TransformException
 import tf2_geometry_msgs
+from std_srvs.srv import Trigger
 
 import cv2
 import numpy as np
@@ -317,6 +318,7 @@ class VisionDetectorNode(Node):
         # 輪胎或架子開關
         # =========================
         self.detect_wheel = True
+        # self.detect_wheel = False
 
         # =========================
         # 共用：相機狀態
@@ -349,7 +351,7 @@ class VisionDetectorNode(Node):
         # =========================
         self._shelf_state = ShelfState()
         self._shelf_detector = ShelfDetector(
-            model_path='/home/alan/Moveit2/ar4_mk_5_ws/src/vision_yolo_depth/yolo/real_shelf_pose_best.pt',
+            model_path='/home/alan/Moveit2/ar4_mk_5_ws/src/vision_yolo_depth/yolo/real_shelf_pose_one_point_best.pt',
             node=self,
             cam=self._cam,
             state=self._shelf_state,
@@ -369,7 +371,7 @@ class VisionDetectorNode(Node):
         # =========================
         # 夾爪 Joint State
         # =========================
-        self.gripper_sub = self.create_subscription(
+        self.joint_state_sub = self.create_subscription(
             JointState, '/joint_states',
             self._joint_state_callback, 5
         )
@@ -380,6 +382,7 @@ class VisionDetectorNode(Node):
         self.create_service(Armcoodinate,   'view_shelf_coord',  self._view_shelf_coord_callback)
         self.create_service(ShelfCoodinate, 'shelf_coord',       self._shelf_coord_callback)
         self.create_service(Armcoodinate,   'wheel_pose',        self._wheel_pose_callback)
+        self.create_service(Trigger, 'reset_all_states', self._reset_callback)
 
     # =========================================================
     # 共用 Callbacks
@@ -435,13 +438,33 @@ class VisionDetectorNode(Node):
         if 'grip_to_base1' in msg.name:
             idx = msg.name.index('grip_to_base1')
             self._wheel_state.gripper_state = msg.position[idx]
+        
+            
+        try:
+            view_shelf_transform = self.tf_buffer.lookup_transform(
+                'base_link',
+                'gripper_tcp',
+                rclpy.time.Time()
+            )
+        except TransformException as e:
+            # 找不到就先跳出，等下一次 callback
+            return False
+        
+        current_pose = Pose()
+        current_pose.position.x = round(view_shelf_transform.transform.translation.x, 4)
+        current_pose.position.y = round(view_shelf_transform.transform.translation.y, 4)
+        current_pose.position.z = round(view_shelf_transform.transform.translation.z, 4)
+        
+        if abs(current_pose.position.x - self._shelf_state.view_coord.position.x) < 0.001 and \
+           abs(current_pose.position.y - self._shelf_state.view_coord.position.y) < 0.001 and \
+           abs(current_pose.position.z - self._shelf_state.view_coord.position.z) < 0.001:
+            self._shelf_state.start_detect_pose = True
 
     # =========================================================
     # Services
     # =========================================================
 
     def _view_shelf_coord_callback(self, request, response):
-        self._shelf_state.start_detect_pose = True
         response.arm_cood = self._shelf_state.view_coord
         return response
 
@@ -455,11 +478,11 @@ class VisionDetectorNode(Node):
 
         while not isinstance(self._shelf_state.goal_pose, Pose):
             self.get_logger().warning('尚未取得貨架座標，等待中...')
-
+        
         if request.req_cmd != 'get_shelf_cood':
             self.get_logger().warning(f'無效指令: {request.req_cmd}')
             return response
-
+        
         goal = self._shelf_state.goal_pose
         goal.orientation.x = 0.704
         goal.orientation.y = 0.704
@@ -486,14 +509,38 @@ class VisionDetectorNode(Node):
         goal.orientation.y = 0.0
         goal.orientation.z = 0.0
         goal.orientation.w = 0.0
-        goal.position.x = pose_base.position.x - 0.05
-        goal.position.y = pose_base.position.y - 0.03
-        goal.position.z = pose_base.position.z + 0.025
+        goal.position.x = pose_base.position.x # - 0.05
+        goal.position.y = pose_base.position.y # - 0.03
+        goal.position.z = pose_base.position.z + 0.02
 
         self.detect_wheel = False  # 停止輪胎偵測，避免干擾抓取
 
         response.arm_cood = goal
         self.get_logger().info(f'回傳輪胎座標: {goal}')
+        return response
+    
+    def _reset_callback(self, request, response):
+        """執行完一次任務後，重新初始化所有容易出問題的狀態"""
+        # 貨架相關重置
+        self._shelf_state.yolo_results = None
+        self._shelf_state.vel_is_detected = False
+        self._shelf_state.vel_measuring = False
+        self._shelf_state.delay_counter = 0
+        self._shelf_state.vel = 0.0
+        self._shelf_state.start_detect_pose = False
+        
+        # 輪胎相關重置
+        self._wheel_state.bbox = None
+        self._wheel_state.pose_base = Pose()
+        self._wheel_state.distance = 0.0
+        
+        # 模式切換（避免永久鎖死）
+        self.detect_wheel = True
+        
+        self.get_logger().info("=== 所有狀態已重新初始化 ===")
+        
+        response.success = True
+        response.message = 'All states reset successfully'
         return response
 
 
